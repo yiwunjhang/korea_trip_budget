@@ -9,6 +9,8 @@ import { DAILY_CATEGORIES, isDailyCategory, NON_DAILY_CATEGORIES, normalizeCateg
 import { Check } from 'lucide-vue-next'
 import { formatMoney } from '../utils/money'
 import CategoryIcon from './CategoryIcon.vue'
+import DonutChart from './charts/DonutChart.vue'
+import GroupedBarChart from './charts/GroupedBarChart.vue'
 
 /**
  * 旅伴花費長條圖：依分類分組，每組裡每人一條（顏色代表成員），
@@ -21,7 +23,14 @@ const ledger = useLedgerStore()
 const session = useSessionStore()
 
 const currency = ref<Currency>('KRW')
-const view = ref<'chart' | 'table'>('chart')
+/** 呈現方式：圓餅圖（每人一個）／長條圖（依分類）／表格 */
+type ViewMode = 'pie' | 'bar' | 'table'
+const view = ref<ViewMode>('pie')
+const viewModes: { value: ViewMode; label: string }[] = [
+  { value: 'pie', label: '圓餅圖' },
+  { value: 'bar', label: '長條圖' },
+  { value: 'table', label: '表格' },
+]
 
 /** 資料來源：有群組用群組彙總；沒有就用自己的帳在前端算 */
 const rows = computed<GroupSpendingRow[]>(() => {
@@ -159,12 +168,29 @@ const categoryRows = computed(() =>
     .sort((a, b) => b.total - a.total),
 )
 
-/** 共用比例尺：所有長條用同一個最大值，跨分類、跨人都能直接比 */
-const maxValue = computed(() =>
-  Math.max(1, ...categoryRows.value.flatMap((row) => row.values.map((v) => v.value))),
+/** 圓餅圖：每人一個，顏色代表分類（固定色，不會因篩選換色） */
+const pies = computed(() =>
+  people.value.map((p) => ({
+    id: p.id,
+    name: p.name.replace('（我）', ''),
+    segments: DAILY_CATEGORIES.map((c) => ({
+      key: c.name,
+      label: c.name,
+      color: c.color,
+      value: scopeRows.value
+        .filter((r) => r.member_id === p.id && r.category === c.name)
+        .reduce((s, r) => s + amountOf(r), 0),
+    })).sort((a, b) => b.value - a.value),
+  })),
 )
 
-const barWidth = (value: number) => `${Math.max(0, (value / maxValue.value) * 100)}%`
+/** 長條圖：每個分類一組、每人一條（顏色代表成員） */
+const barGroups = computed(() =>
+  categoryRows.value.map((row) => ({
+    label: row.category,
+    values: row.values.map((v) => ({ ...v, name: v.name.replace('（我）', '') })),
+  })),
+)
 
 const itinerary = useItineraryStore()
 
@@ -314,50 +340,47 @@ function dayLabel(day: string): string {
         </button>
       </div>
 
-      <!-- 圖例兼合計：每人一個顏色 + 這個範圍花了多少 -->
-      <ul class="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+      <!-- 呈現方式 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex rounded-full bg-white/60 p-0.5 text-xs" role="tablist" aria-label="呈現方式">
+          <button
+            v-for="m in viewModes"
+            :key="m.value"
+            type="button"
+            role="tab"
+            class="rounded-full px-3 py-1 transition"
+            :class="view === m.value ? 'bg-brand-400 font-semibold text-ink-900 shadow-sm' : 'text-ink-600'"
+            :aria-selected="view === m.value"
+            @click="view = m.value"
+          >
+            {{ m.label }}
+          </button>
+        </div>
+        <span class="truncate text-[11px] text-ink-400">
+          {{ selectedDay === 'all' ? '全部天數' : scopeLabel(selectedDay) }}・不含機票住宿
+        </span>
+      </div>
+
+      <!-- 圖例：長條圖、表格的顏色代表成員 -->
+      <ul v-if="view !== 'pie'" class="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
         <li v-for="p in personTotals" :key="p.id" class="flex items-center gap-1.5">
           <span class="h-2.5 w-2.5 rounded-sm" :style="{ background: p.color }" />
           <span class="text-ink-600">{{ p.name }}</span>
           <b class="tabular text-ink-900">{{ formatMoney(p.total, currency) }}</b>
         </li>
       </ul>
-      <p class="-mt-2 text-xs text-ink-400">
-        {{ selectedDay === 'all' ? '全部天數' : scopeLabel(selectedDay) }}・不含機票、住宿
-      </p>
+
+      <!-- 圓餅圖：每人一個 -->
+      <div
+        v-if="view === 'pie'"
+        class="grid gap-x-4 gap-y-5"
+        :class="pies.length > 1 ? 'grid-cols-2' : 'mx-auto max-w-[15rem] grid-cols-1'"
+      >
+        <DonutChart v-for="p in pies" :key="p.id" :title="p.name" :segments="p.segments" :currency="currency" />
+      </div>
 
       <!-- 長條圖：依分類，每人一條 -->
-      <ul v-if="view === 'chart'" class="space-y-4">
-        <li v-for="row in categoryRows" :key="row.category">
-          <div class="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-800">
-            <CategoryIcon :name="row.category" :size="15" class="text-ink-600" />
-            {{ row.category }}
-            <span v-if="row.values.length > 1" class="tabular ml-auto font-normal text-ink-400">
-              合計 {{ formatMoney(row.total, currency) }}
-            </span>
-          </div>
-          <div
-            v-for="v in row.values"
-            :key="v.id"
-            class="flex items-center gap-2 py-[1px]"
-            :title="`${v.name}・${row.category} ${formatMoney(v.value, currency)}`"
-          >
-            <span v-if="row.values.length > 1" class="w-14 shrink-0 truncate text-xs text-ink-600">
-              {{ v.name.replace('（我）', '') }}
-            </span>
-            <div class="h-3 flex-1">
-              <div
-                v-if="v.value > 0"
-                class="h-full rounded-r transition-all"
-                :style="{ width: barWidth(v.value), background: v.color, minWidth: '3px' }"
-              />
-            </div>
-            <span class="tabular w-20 shrink-0 text-right text-xs" :class="v.value ? 'text-ink-900' : 'text-ink-400'">
-              {{ v.value ? formatMoney(v.value, currency) : '—' }}
-            </span>
-          </div>
-        </li>
-      </ul>
+      <GroupedBarChart v-else-if="view === 'bar'" :groups="barGroups" :currency="currency" />
 
       <!-- 表格 -->
       <div v-else class="-mx-1 overflow-x-auto">
@@ -398,9 +421,7 @@ function dayLabel(day: string): string {
       </div>
 
       <div class="flex items-center justify-between">
-        <button type="button" class="text-xs text-brand-600" @click="view = view === 'chart' ? 'table' : 'chart'">
-          {{ view === 'chart' ? '改看表格 ›' : '改看圖表 ›' }}
-        </button>
+        <span />
         <button
           v-if="group.group"
           type="button"
