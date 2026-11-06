@@ -5,11 +5,17 @@ import { useGroupStore } from '../stores/group'
 import { useItineraryStore } from '../stores/itinerary'
 import { useLedgerStore } from '../stores/ledger'
 import { useSessionStore } from '../stores/session'
-import { DAILY_CATEGORIES, isDailyCategory, NON_DAILY_CATEGORIES, normalizeCategory } from '../utils/categories'
+import {
+  DAILY_CATEGORIES,
+  FIXED_CATEGORIES,
+  isDailyCategory,
+  NON_DAILY_CATEGORIES,
+  normalizeCategory,
+} from '../utils/categories'
 import { Check } from 'lucide-vue-next'
 import { formatMoney } from '../utils/money'
 import CategoryIcon from './CategoryIcon.vue'
-import DonutChart from './charts/DonutChart.vue'
+import PieChart from './charts/PieChart.vue'
 import GroupedBarChart from './charts/GroupedBarChart.vue'
 
 /**
@@ -136,9 +142,21 @@ function colorOf(personId: string): string {
   return PERSON_COLORS[Math.max(0, index) % PERSON_COLORS.length]
 }
 
+/**
+ * 要不要把機票、住宿也算進圖表。
+ * 使用者沒選過時自動決定：還沒有旅途中的花費（例如出發前只記了機票住宿）就先算進去，
+ * 不然圖表會一片空白；開始記旅途花費後預設只看旅途中的。
+ */
+const includeChoice = ref<boolean | null>(null)
+const hasNonDaily = computed(() => visibleRows.value.some((r) => !isDailyCategory(r.category)))
+const includeNonDaily = computed(() => includeChoice.value ?? (days.value.length === 0 && hasNonDaily.value))
+const chartCategories = computed(() => (includeNonDaily.value ? FIXED_CATEGORIES : DAILY_CATEGORIES))
+
 /** 目前範圍（全部天數或某一天）的資料 */
 const scopeRows = computed(() =>
-  dailyRows.value.filter((r) => selectedDay.value === 'all' || r.day === selectedDay.value),
+  (includeNonDaily.value ? visibleRows.value : dailyRows.value).filter(
+    (r) => selectedDay.value === 'all' || r.day === selectedDay.value,
+  ),
 )
 
 /** 每位成員在這個範圍的合計（兼圖例） */
@@ -153,7 +171,7 @@ const personTotals = computed(() =>
 
 /** 依分類：每個分類一組，組內每人一條；分類由花最多排到最少 */
 const categoryRows = computed(() =>
-  DAILY_CATEGORIES.map((c) => {
+  chartCategories.value.map((c) => {
     const values = people.value.map((p) => ({
       id: p.id,
       name: p.name,
@@ -168,12 +186,12 @@ const categoryRows = computed(() =>
     .sort((a, b) => b.total - a.total),
 )
 
-/** 圓餅圖：每人一個，顏色代表分類（固定色，不會因篩選換色） */
+/** 圓餅圖：每人一個實心圓餅，顏色代表分類（固定色，不會因篩選換色） */
 const pies = computed(() =>
   people.value.map((p) => ({
     id: p.id,
     name: p.name.replace('（我）', ''),
-    segments: DAILY_CATEGORIES.map((c) => ({
+    segments: chartCategories.value.map((c) => ({
       key: c.name,
       label: c.name,
       color: c.color,
@@ -287,7 +305,7 @@ function dayLabel(day: string): string {
 
     <template v-else>
       <!-- 機票、住宿：另外列，不算進每天 -->
-      <div v-if="nonDaily.length" class="rounded-xl border border-white/80 bg-white/50 px-3 py-2.5">
+      <div v-if="nonDaily.length && !includeNonDaily" class="rounded-xl border border-white/80 bg-white/50 px-3 py-2.5">
         <p class="text-xs font-medium text-ink-800">
           機票・住宿 <span class="font-normal text-ink-400">（不算進每日花費）</span>
         </p>
@@ -315,11 +333,8 @@ function dayLabel(day: string): string {
         </table>
       </div>
 
-      <p v-if="!days.length" class="py-4 text-center text-sm text-ink-400">還沒有旅途中的花費</p>
-
-      <template v-else>
-      <!-- 篩選：天數 -->
-      <div class="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      <!-- 篩選：天數（只有旅途中有花費才有天數可選） -->
+      <div v-if="days.length" class="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
         <button
           type="button"
           class="chip shrink-0 text-xs"
@@ -356,10 +371,27 @@ function dayLabel(day: string): string {
             {{ m.label }}
           </button>
         </div>
-        <span class="truncate text-[11px] text-ink-400">
-          {{ selectedDay === 'all' ? '全部天數' : scopeLabel(selectedDay) }}・不含機票住宿
-        </span>
+        <button
+          v-if="hasNonDaily"
+          type="button"
+          class="chip shrink-0 py-1 text-[11px]"
+          :class="{ 'chip-on': includeNonDaily }"
+          :aria-pressed="includeNonDaily"
+          @click="includeChoice = !includeNonDaily"
+        >
+          <Check v-if="includeNonDaily" :size="11" :stroke-width="2.5" />
+          含機票住宿
+        </button>
       </div>
+      <p class="-mt-2 text-[11px] text-ink-400">
+        {{ selectedDay === 'all' ? '全部天數' : scopeLabel(selectedDay) }}・{{ includeNonDaily ? '含機票、住宿' : '只算旅途中的花費（不含機票、住宿）' }}
+      </p>
+
+      <p v-if="!scopeRows.length" class="py-6 text-center text-sm text-ink-400">
+        還沒有旅途中的花費<template v-if="hasNonDaily">，可以打開「含機票住宿」看總花費</template>
+      </p>
+
+      <template v-else>
 
       <!-- 圖例：長條圖、表格的顏色代表成員 -->
       <ul v-if="view !== 'pie'" class="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
@@ -376,7 +408,7 @@ function dayLabel(day: string): string {
         class="grid gap-x-4 gap-y-5"
         :class="pies.length > 1 ? 'grid-cols-2' : 'mx-auto max-w-[15rem] grid-cols-1'"
       >
-        <DonutChart v-for="p in pies" :key="p.id" :title="p.name" :segments="p.segments" :currency="currency" />
+        <PieChart v-for="p in pies" :key="p.id" :title="p.name" :segments="p.segments" :currency="currency" />
       </div>
 
       <!-- 長條圖：依分類，每人一條 -->
@@ -420,6 +452,8 @@ function dayLabel(day: string): string {
         </table>
       </div>
 
+      </template>
+
       <div class="flex items-center justify-between">
         <span />
         <button
@@ -432,7 +466,6 @@ function dayLabel(day: string): string {
           {{ group.loading ? '更新中…' : '重新整理' }}
         </button>
       </div>
-      </template>
     </template>
   </section>
 </template>
