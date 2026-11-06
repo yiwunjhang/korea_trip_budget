@@ -47,7 +47,7 @@ watch(
     if (typeof q.category === 'string' && FIXED_CATEGORIES.some((c) => c.name === q.category)) {
       category.value = q.category
     }
-    if (typeof q.date === 'string' && /^d{4}-d{2}-d{2}$/.test(q.date)) {
+    if (typeof q.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.date)) {
       // 首爾現在的時:分，接在行程那天的日期後面
       const nowTime = toSeoulInputValue(new Date()).slice(11)
       spentAt.value = `${q.date}T${nowTime}`
