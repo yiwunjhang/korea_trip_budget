@@ -4,6 +4,7 @@ import type { Transaction } from '../db/api'
 import { Trash2 } from 'lucide-vue-next'
 import { useLedgerStore } from '../stores/ledger'
 import CategoryIcon from './CategoryIcon.vue'
+import { alertError, confirmDelete, toastSaved } from '../utils/alert'
 import { formatKRW, formatSeoulDate, formatSeoulDateTime, formatTWD } from '../utils/money'
 
 const props = defineProps<{ items: Transaction[]; emptyText?: string }>()
@@ -41,8 +42,13 @@ function kindLabel(tx: Transaction): string {
 
 async function remove(tx: Transaction) {
   const label = tx.title || kindLabel(tx)
-  if (!window.confirm(`刪除「${label}」${formatKRW(tx.amount_krw)}？`)) return
-  await ledger.removeTransaction(tx.id)
+  const ok = await confirmDelete(
+    `刪除「${label}」？`,
+    `${formatKRW(tx.amount_krw)}（${formatTWD(tx.amount_twd)}）・${formatSeoulDateTime(tx.spent_at)}`,
+  )
+  if (!ok) return
+  if (await ledger.removeTransaction(tx.id)) toastSaved('已刪除')
+  else alertError(ledger.error || '請稍後再試', '刪除失敗')
 }
 </script>
 

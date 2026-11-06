@@ -6,7 +6,9 @@ import { formatMoney, krwToTwd, seoulInputToISO, toSeoulInputValue, twdToKrw } f
 import { previewRebate, STAGE_CAP_TWD } from '../utils/easywallet'
 import { tracksBalance } from '../utils/wallet'
 import CategoryIcon from './CategoryIcon.vue'
-import { ChevronDown, CircleCheck } from 'lucide-vue-next'
+import { FIXED_CATEGORIES, TOPUP_CATEGORY } from '../utils/categories'
+import { ChevronDown } from 'lucide-vue-next'
+import { alertError, toastSaved } from '../utils/alert'
 
 /**
  * 記帳表單，順序照結帳當下的動作排：
@@ -28,7 +30,6 @@ const note = ref('')
 const spentAt = ref(toSeoulInputValue(new Date()))
 const showMore = ref(false)
 const saving = ref(false)
-const toast = ref('')
 const amountInput = ref<HTMLInputElement | null>(null)
 
 const wallet = computed(() => (walletId.value === null ? undefined : ledger.walletById(walletId.value)))
@@ -58,6 +59,23 @@ watch(kind, (value) => {
   // 切到加值時，若目前選的是悠遊付／信用卡，改選第一個現金錢包
   if (!walletChoices.value.some((w) => w.wallet_id === walletId.value)) {
     walletId.value = walletChoices.value[0]?.wallet_id ?? null
+  }
+})
+
+/**
+ * 加值來源預設：Wowpass、T-money 是拿韓幣現金去儲值，預設從韓幣現金扣；
+ * 韓幣現金本身是拿台幣換來的，預設「外部匯入」。
+ */
+watch([kind, walletId], () => {
+  if (kind.value !== 'topup') return
+  const target = wallet.value
+  if (target && (target.kind === 'prepaid' || target.kind === 'transit')) {
+    const krwCash = balanceWallets.value.find(
+      (w) => w.kind === 'cash' && w.balance_currency === 'KRW' && w.wallet_id !== target.wallet_id,
+    )
+    fundedWalletId.value = krwCash?.wallet_id ?? null
+  } else {
+    fundedWalletId.value = null
   }
 })
 
@@ -131,7 +149,7 @@ async function submit() {
     kind: kind.value,
     spent_at: seoulInputToISO(spentAt.value),
     title: title.value.trim(),
-    category: kind.value === 'topup' ? '加值換匯' : category.value,
+    category: kind.value === 'topup' ? TOPUP_CATEGORY : category.value,
     wallet_id: walletId.value,
     currency: currency.value,
     amount: numericAmount.value,
@@ -148,8 +166,12 @@ async function submit() {
     note.value = ''
     spentAt.value = toSeoulInputValue(new Date())
     kind.value = 'expense'
-    toast.value = `已記${formatMoney(created.amount_krw, 'KRW')}（${formatMoney(created.amount_twd, 'TWD')}）`
-    setTimeout(() => (toast.value = ''), 2500)
+    toastSaved(
+      `已記 ${formatMoney(created.amount_krw, 'KRW')}`,
+      `${formatMoney(created.amount_twd, 'TWD')}${created.title ? `・${created.title}` : ''}`,
+    )
+  } else {
+    alertError(ledger.error || '請稍後再試', '記帳失敗')
   }
 }
 </script>
@@ -308,8 +330,8 @@ async function submit() {
         <span class="label">分類</span>
         <div class="grid grid-cols-4 gap-2">
           <button
-            v-for="c in ledger.categories"
-            :key="c.id"
+            v-for="c in FIXED_CATEGORIES"
+            :key="c.name"
             type="button"
             class="flex flex-col items-center gap-0.5 rounded-xl border py-2 text-xs transition"
             :class="
@@ -378,22 +400,5 @@ async function submit() {
         {{ submitLabel }}
       </button>
     </div>
-
-    <!-- 記好的提示 -->
-    <Transition
-      enter-from-class="-translate-y-4 opacity-0"
-      leave-to-class="-translate-y-4 opacity-0"
-      enter-active-class="transition duration-200"
-      leave-active-class="transition duration-200"
-    >
-      <p
-        v-if="toast"
-        class="glass fixed inset-x-4 top-[calc(4rem+env(safe-area-inset-top))] z-30 mx-auto flex max-w-sm items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-mint-600"
-        role="status"
-      >
-        <CircleCheck :size="18" />
-        {{ toast }}
-      </p>
-    </Transition>
   </form>
 </template>

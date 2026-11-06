@@ -4,7 +4,6 @@ import * as api from '../db/api'
 import { buildRebateReport } from '../utils/easywallet'
 import type {
   BudgetSummary,
-  Category,
   Transaction,
   TransactionInput,
   TripSettings,
@@ -21,7 +20,6 @@ export const useLedgerStore = defineStore('ledger', () => {
   const settings = ref<TripSettings | null>(null)
   const summary = ref<BudgetSummary | null>(null)
   const wallets = ref<WalletBalance[]>([])
-  const categories = ref<Category[]>([])
   const transactions = ref<Transaction[]>([])
 
   const loading = ref(false)
@@ -60,17 +58,15 @@ export const useLedgerStore = defineStore('ledger', () => {
   async function refresh() {
     loading.value = true
     await run(async () => {
-      const [s, sum, w, c, t] = await Promise.all([
+      const [s, sum, w, t] = await Promise.all([
         api.getTripSettings(),
         api.getBudgetSummary(),
         api.listWalletBalances(),
-        api.listCategories(),
         api.listTransactions(),
       ])
       settings.value = s
       summary.value = sum
       wallets.value = w
-      categories.value = c
       transactions.value = t
     })
     loading.value = false
@@ -88,54 +84,41 @@ export const useLedgerStore = defineStore('ledger', () => {
   async function addTransaction(input: TransactionInput) {
     const created = await run(() => api.createTransaction(input))
     if (created) await refresh()
-    return created
+    return created // 失敗時為 null，error 會保留錯誤訊息
   }
 
-  async function editTransaction(id: number, patch: Partial<TransactionInput>) {
-    await run(() => api.updateTransaction(id, patch))
+  /**
+   * 寫入後重新載入，回傳是否成功（給畫面決定要跳成功還是失敗提示）。
+   * refresh() 會清掉 error，所以失敗訊息要先存起來再放回去。
+   */
+  async function write(task: () => Promise<unknown>): Promise<boolean> {
+    const ok = (await run(task)) !== null
+    const message = error.value
     await refresh()
+    if (!ok) error.value = message
+    return ok
   }
 
-  async function removeTransaction(id: number) {
-    await run(() => api.deleteTransaction(id))
-    await refresh()
-  }
+  const editTransaction = (id: number, patch: Partial<TransactionInput>) =>
+    write(() => api.updateTransaction(id, patch))
 
-  async function saveSettings(patch: Partial<Omit<TripSettings, 'user_id'>>) {
-    await run(() => api.saveTripSettings(patch))
-    await refresh()
-  }
+  const removeTransaction = (id: number) => write(() => api.deleteTransaction(id))
 
-  async function addWallet(input: Parameters<typeof api.createWallet>[0]) {
-    await run(() => api.createWallet(input))
-    await refresh()
-  }
+  const saveSettings = (patch: Partial<Omit<TripSettings, 'user_id'>>) =>
+    write(() => api.saveTripSettings(patch))
 
-  async function editWallet(id: number, patch: Partial<Omit<Wallet, 'id'>>) {
-    await run(() => api.updateWallet(id, patch))
-    await refresh()
-  }
+  const addWallet = (input: Parameters<typeof api.createWallet>[0]) =>
+    write(() => api.createWallet(input))
 
-  async function removeWallet(id: number) {
-    await run(() => api.deleteWallet(id))
-    await refresh()
-  }
+  const editWallet = (id: number, patch: Partial<Omit<Wallet, 'id'>>) =>
+    write(() => api.updateWallet(id, patch))
 
-  async function addCategory(name: string, emoji?: string) {
-    await run(() => api.createCategory(name, emoji))
-    await refresh()
-  }
-
-  async function removeCategory(id: number) {
-    await run(() => api.deleteCategory(id))
-    await refresh()
-  }
+  const removeWallet = (id: number) => write(() => api.deleteWallet(id))
 
   return {
     settings,
     summary,
     wallets,
-    categories,
     transactions,
     loading,
     error,
@@ -153,7 +136,5 @@ export const useLedgerStore = defineStore('ledger', () => {
     addWallet,
     editWallet,
     removeWallet,
-    addCategory,
-    removeCategory,
   }
 })

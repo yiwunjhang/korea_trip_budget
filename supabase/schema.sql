@@ -41,7 +41,7 @@ create table if not exists public.wallets (
   user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   name text not null,
   kind text not null default 'other'
-    check (kind in ('easywallet', 'cash', 'card', 'transit', 'other')),
+    check (kind in ('easywallet', 'cash', 'card', 'transit', 'prepaid', 'other')),
   -- 這個錢包的餘額用哪個幣別計：悠遊付 / 信用卡扣台幣 → TWD；韓元現金 → KRW
   balance_currency text not null check (balance_currency in ('KRW', 'TWD')),
   -- 期初餘額（出發前這個錢包裡有多少錢；信用卡可填額度或 0）
@@ -57,6 +57,11 @@ create table if not exists public.wallets (
 -- 交易用 (wallet_id, user_id) 複合外鍵指回來，確保不會把別人的錢包接上自己的帳
 create unique index if not exists wallets_id_user_key on public.wallets (id, user_id);
 create index if not exists wallets_user_idx on public.wallets (user_id, sort_order);
+
+-- 舊版沒有 prepaid（Wowpass 這類儲值卡），重跑時把 kind 的檢查換成新版
+alter table public.wallets drop constraint if exists wallets_kind_check;
+alter table public.wallets add constraint wallets_kind_check
+  check (kind in ('easywallet', 'cash', 'card', 'transit', 'prepaid', 'other'));
 
 alter table public.wallets enable row level security;
 
@@ -139,6 +144,195 @@ alter table public.transactions enable row level security;
 drop policy if exists "transactions_own" on public.transactions;
 create policy "transactions_own" on public.transactions
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ---------- 固定分類 ----------
+-- 旅伴之間要能比較「誰在什麼項目花多少」，所以分類全員固定，不開放自訂。
+-- 清單要和前端 src/utils/categories.ts 的 FIXED_CATEGORIES 一致。
+-- not valid：只檢查之後新增／修改的帳，舊資料不動（統計時不在清單內的會算到「其他」）。
+create or replace function public.fixed_categories()
+returns text[]
+language sql
+immutable
+as $fn$
+  select array['餐飲', '交通', '購物', '住宿', '門票娛樂', '通訊雜支', '其他']
+$fn$;
+
+do $do$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'transactions_category_fixed'
+  ) then
+    alter table public.transactions
+      add constraint transactions_category_fixed
+      check (category = any (array['餐飲', '交通', '購物', '住宿', '門票娛樂', '通訊雜支', '其他', '加值換匯']))
+      not valid;
+  end if;
+end
+$do$;
+
+-- =====================================================================
+-- 旅伴群組：各自用自己的帳號記帳（餘額、明細只有自己看得到），
+-- 但群組成員可以看到彼此「每天 × 分類」的彙總金額。
+--   trip_groups  群組（邀請碼）
+--   trip_members 成員與顯示名稱
+-- 加入／建立一律走 RPC（create_trip_group / join_trip_group），不開放直接 insert。
+-- =====================================================================
+create table if not exists public.trip_groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null default '韓國旅行',
+  invite_code text not null unique
+    default upper(substr(md5(random()::text || clock_timestamp()::text), 1, 6)),
+  created_by uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.trip_members (
+  group_id uuid not null references public.trip_groups(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  display_name text not null,
+  joined_at timestamptz not null default now(),
+  primary key (group_id, user_id)
+);
+
+create index if not exists trip_members_user_idx on public.trip_members (user_id);
+
+-- 是否為該群組成員。security definer 才不會在 trip_members 的 policy 裡自己查自己而無限遞迴。
+create or replace function public.is_group_member(p_group uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select exists (
+    select 1 from public.trip_members
+    where group_id = p_group and user_id = auth.uid()
+  )
+$fn$;
+
+alter table public.trip_groups enable row level security;
+alter table public.trip_members enable row level security;
+
+drop policy if exists "trip_groups_member_read" on public.trip_groups;
+create policy "trip_groups_member_read" on public.trip_groups
+  for select using (public.is_group_member(id));
+
+drop policy if exists "trip_groups_member_update" on public.trip_groups;
+create policy "trip_groups_member_update" on public.trip_groups
+  for update using (public.is_group_member(id)) with check (public.is_group_member(id));
+
+drop policy if exists "trip_groups_owner_delete" on public.trip_groups;
+create policy "trip_groups_owner_delete" on public.trip_groups
+  for delete using (created_by = auth.uid());
+
+drop policy if exists "trip_members_member_read" on public.trip_members;
+create policy "trip_members_member_read" on public.trip_members
+  for select using (public.is_group_member(group_id));
+
+-- 只能改自己的顯示名稱、只能自己退出
+drop policy if exists "trip_members_self_update" on public.trip_members;
+create policy "trip_members_self_update" on public.trip_members
+  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists "trip_members_self_delete" on public.trip_members;
+create policy "trip_members_self_delete" on public.trip_members
+  for delete using (user_id = auth.uid());
+
+-- 建立群組並把自己加進去，回傳群組 id
+create or replace function public.create_trip_group(p_name text, p_display_name text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+  v_uid uuid := auth.uid();
+  v_group uuid;
+begin
+  if v_uid is null then
+    raise exception '未登入';
+  end if;
+  if coalesce(trim(p_display_name), '') = '' then
+    raise exception '請輸入你的名字';
+  end if;
+
+  insert into public.trip_groups (name, created_by)
+  values (coalesce(nullif(trim(p_name), ''), '韓國旅行'), v_uid)
+  returning id into v_group;
+
+  insert into public.trip_members (group_id, user_id, display_name)
+  values (v_group, v_uid, trim(p_display_name));
+
+  return v_group;
+end
+$fn$;
+
+-- 用邀請碼加入群組（已在群組裡就只更新名字），回傳群組 id
+create or replace function public.join_trip_group(p_code text, p_display_name text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+  v_uid uuid := auth.uid();
+  v_group uuid;
+begin
+  if v_uid is null then
+    raise exception '未登入';
+  end if;
+  if coalesce(trim(p_display_name), '') = '' then
+    raise exception '請輸入你的名字';
+  end if;
+
+  select g.id into v_group
+  from public.trip_groups g
+  where g.invite_code = upper(trim(p_code));
+
+  if v_group is null then
+    raise exception '邀請碼不正確';
+  end if;
+
+  insert into public.trip_members (group_id, user_id, display_name)
+  values (v_group, v_uid, trim(p_display_name))
+  on conflict (group_id, user_id) do update set display_name = excluded.display_name;
+
+  return v_group;
+end
+$fn$;
+
+-- 群組花費彙總：每位成員 × 每天（首爾時間）× 分類。只回彙總數字，不回單筆明細。
+-- 不是成員就回空集合。
+create or replace function public.group_spending(p_group uuid)
+returns table (
+  member_id uuid,
+  display_name text,
+  day date,
+  category text,
+  krw numeric,
+  twd numeric,
+  entry_count bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select
+    m.user_id,
+    m.display_name,
+    (t.spent_at at time zone 'Asia/Seoul')::date,
+    case when t.category = any (public.fixed_categories()) then t.category else '其他' end,
+    sum(case t.kind when 'refund' then -t.amount_krw else t.amount_krw end),
+    sum(case t.kind when 'refund' then -t.amount_twd else t.amount_twd end),
+    count(*)
+  from public.trip_members m
+  join public.transactions t on t.user_id = m.user_id
+  where m.group_id = p_group
+    and public.is_group_member(p_group)
+    and t.kind in ('expense', 'refund')
+  group by 1, 2, 3, 4
+$fn$;
 
 -- =====================================================================
 -- 統計 view：一律加 security_invoker，讓 RLS 跟著呼叫者走（不會看到別人的帳）
@@ -281,10 +475,11 @@ begin
   if not exists (select 1 from public.wallets where user_id = uid) then
     insert into public.wallets (user_id, name, kind, balance_currency, opening_balance, sort_order)
     values
-      (uid, '悠遊付',   'easywallet', 'TWD', 0, 1),
-      (uid, '韓元現金', 'cash',       'KRW', 0, 2),
-      (uid, '台幣現金', 'cash',       'TWD', 0, 3),
-      (uid, '信用卡',   'card',       'TWD', 0, 4);
+      (uid, '悠遊付',   'easywallet', 'TWD', 0, 1),  -- 只算回饋額度，不算餘額
+      (uid, '韓幣現金', 'cash',       'KRW', 0, 2),
+      (uid, 'Wowpass',  'prepaid',    'KRW', 0, 3),  -- 用韓幣現金儲值
+      (uid, '信用卡',   'card',       'TWD', 0, 4),  -- 只算已刷，不算餘額
+      (uid, 'T-money',  'transit',    'KRW', 0, 5);  -- 只能用現金儲值
   end if;
 
   if not exists (select 1 from public.categories where user_id = uid) then
@@ -314,3 +509,21 @@ grant select
      public.v_daily_totals, public.v_category_totals
   to authenticated;
 grant execute on function public.seed_defaults() to authenticated;
+
+-- 旅伴群組：表格只開讀、改名、退出（新增走 RPC）
+grant select, update, delete on public.trip_groups, public.trip_members to authenticated;
+
+-- 函式預設 PUBLIC 可執行，先收回再只開給登入者（未登入的 anon 不能呼叫）
+revoke execute on function
+  public.create_trip_group(text, text),
+  public.join_trip_group(text, text),
+  public.group_spending(uuid),
+  public.is_group_member(uuid)
+  from public, anon;
+grant execute on function
+  public.create_trip_group(text, text),
+  public.join_trip_group(text, text),
+  public.group_spending(uuid),
+  public.is_group_member(uuid),
+  public.fixed_categories()
+  to authenticated;

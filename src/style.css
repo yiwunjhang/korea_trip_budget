@@ -59,6 +59,47 @@ body {
   background-attachment: fixed;
 }
 
+/* ---------- SweetAlert2：毛玻璃外觀（要蓋過套件自帶的樣式） ---------- */
+.swal2-popup.swal-glass {
+  border: 1px solid rgb(255 255 255 / 0.75);
+  border-radius: 1.25rem;
+  background: rgb(255 253 248 / 0.78);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow:
+    0 16px 40px -16px rgb(122 80 4 / 0.35),
+    inset 0 1px 0 rgb(255 255 255 / 0.8);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+}
+
+.swal2-popup.swal2-toast.swal-glass {
+  padding: 0.6rem 1rem;
+}
+
+.swal2-container.swal2-backdrop-show {
+  background: rgb(47 36 20 / 0.18);
+}
+
+.swal-glass .swal-title {
+  color: var(--color-ink-900);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.swal2-toast.swal-glass .swal-title {
+  font-size: 0.95rem;
+}
+
+.swal-glass .swal-text {
+  color: var(--color-ink-600);
+  font-size: 0.9rem;
+}
+
+.swal-glass .swal2-timer-progress-bar {
+  background: var(--color-brand-400);
+}
+
 /* 金額一律等寬，不會因為位數不同跳動 */
 .tabular {
   font-variant-numeric: tabular-nums;

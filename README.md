@@ -31,7 +31,12 @@ npm run dev
 | `v_wallet_balances` | 錢包即時餘額＝期初 − 花費 ＋ 退款 ＋ 加值 − 幫別的錢包加值的成本 |
 | `v_budget_summary` | 預算扣完剩多少（韓元、台幣各一組） |
 | `v_daily_totals` / `v_category_totals` | 每日、每分類花費（以首爾時間切日） |
-| `seed_defaults()` | 新帳號第一次登入時建立預設設定、錢包、分類 |
+| `seed_defaults()` | 新帳號第一次登入時建立預設設定、錢包（悠遊付／韓幣現金／Wowpass／信用卡／T-money）、分類 |
+| `trip_groups` / `trip_members` | 旅伴群組與成員。用邀請碼加入（`create_trip_group` / `join_trip_group` RPC） |
+| `group_spending(group)` | 群組成員「每天 × 分類」的彙總花費；只回統計數字，看不到別人的明細與餘額 |
+
+分類是固定的（`fixed_categories()`，和前端 `src/utils/categories.ts` 一致），
+`transactions_category_fixed` 會擋掉不在清單內的分類，旅伴之間才能互相比較。
 
 設計上的三個重點：
 

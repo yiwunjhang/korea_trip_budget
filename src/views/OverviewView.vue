@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import BudgetCard from '../components/BudgetCard.vue'
+import GroupSpendingChart from '../components/GroupSpendingChart.vue'
+import { useGroupStore } from '../stores/group'
 import RebateCard from '../components/RebateCard.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney } from '../utils/money'
@@ -11,6 +13,10 @@ const ledger = useLedgerStore()
 const summary = computed(() => ledger.summary)
 const balanceWallets = computed(() => ledger.activeWallets.filter((w) => tracksBalance(w.kind)))
 const payWallets = computed(() => ledger.activeWallets.filter((w) => !tracksBalance(w.kind)))
+
+/** 旅伴的花費會一直變，每次進總覽都重抓 */
+const group = useGroupStore()
+onMounted(() => group.refresh())
 </script>
 
 <template>
@@ -32,6 +38,9 @@ const payWallets = computed(() => ledger.activeWallets.filter((w) => !tracksBala
         :remaining="summary.remaining_twd"
       />
     </section>
+
+    <!-- 旅伴：每天各自花在哪 -->
+    <GroupSpendingChart />
 
     <!-- 悠遊付回饋 -->
     <RebateCard />

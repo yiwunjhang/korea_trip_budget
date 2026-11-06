@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import CategoryIcon from '../components/CategoryIcon.vue'
+import { FIXED_CATEGORIES } from '../utils/categories'
 import TransactionList from '../components/TransactionList.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { formatKRW, formatTWD } from '../utils/money'
@@ -105,8 +106,8 @@ const totalKrw = computed(() => byCategory.value.reduce((sum, row) => sum + row.
           全部分類
         </button>
         <button
-          v-for="c in ledger.categories"
-          :key="c.id"
+          v-for="c in FIXED_CATEGORIES"
+          :key="c.name"
           type="button"
           class="chip"
           :class="{ 'chip-on': categoryFilter === c.name }"

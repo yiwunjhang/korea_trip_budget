@@ -11,7 +11,7 @@ export type Currency = 'KRW' | 'TWD'
 export type TxKind = 'expense' | 'refund' | 'topup'
 
 /** 錢包種類（只影響 UI 圖示與分組） */
-export type WalletKind = 'easywallet' | 'cash' | 'card' | 'transit' | 'other'
+export type WalletKind = 'easywallet' | 'cash' | 'card' | 'transit' | 'prepaid' | 'other'
 
 /** 這趟旅行的預算與預設匯率 */
 export interface TripSettings {
@@ -95,13 +95,6 @@ export interface BudgetSummary {
   remaining_twd: number
   entry_count: number
   spend_days: number
-}
-
-export interface Category {
-  id: number
-  name: string
-  emoji: string
-  sort_order: number
 }
 
 export interface DailyTotal {
@@ -282,29 +275,105 @@ export async function deleteWallet(id: number): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
-/* 分類                                                                */
+/* 旅伴群組                                                            */
+/* 各自記帳，群組成員只看得到彼此「每天 × 分類」的彙總（group_spending）  */
 /* ------------------------------------------------------------------ */
 
-export async function listCategories(): Promise<Category[]> {
-  const rows = unwrap<Row[]>(
-    await supabase.from('categories').select('*').order('sort_order', { ascending: true }),
+export interface TripGroup {
+  id: string
+  name: string
+  invite_code: string
+  created_by: string
+}
+
+export interface TripMember {
+  group_id: string
+  user_id: string
+  display_name: string
+}
+
+/** group_spending()：每位成員 × 每天（首爾）× 分類 */
+export interface GroupSpendingRow {
+  member_id: string
+  display_name: string
+  /** yyyy-mm-dd */
+  day: string
+  category: string
+  krw: number
+  twd: number
+  entry_count: number
+}
+
+/** 我所在的群組（通常只有一個，取最早加入的） */
+export async function getMyGroup(): Promise<{ group: TripGroup; members: TripMember[] } | null> {
+  const groups = unwrap<Row[]>(
+    await supabase.from('trip_groups').select('*').order('created_at', { ascending: true }).limit(1),
   )
+  const row = groups?.[0]
+  if (!row) return null
+  const members = unwrap<Row[]>(
+    await supabase
+      .from('trip_members')
+      .select('*')
+      .eq('group_id', row.id)
+      .order('joined_at', { ascending: true }),
+  )
+  return {
+    group: {
+      id: String(row.id),
+      name: String(row.name),
+      invite_code: String(row.invite_code),
+      created_by: String(row.created_by),
+    },
+    members: (members ?? []).map((m) => ({
+      group_id: String(m.group_id),
+      user_id: String(m.user_id),
+      display_name: String(m.display_name),
+    })),
+  }
+}
+
+export async function createGroup(name: string, displayName: string): Promise<string> {
+  return unwrap<string>(
+    await supabase.rpc('create_trip_group', { p_name: name, p_display_name: displayName }),
+  )
+}
+
+export async function joinGroup(code: string, displayName: string): Promise<string> {
+  return unwrap<string>(
+    await supabase.rpc('join_trip_group', { p_code: code, p_display_name: displayName }),
+  )
+}
+
+export async function renameMe(groupId: string, userId: string, displayName: string): Promise<void> {
+  const { error } = await supabase
+    .from('trip_members')
+    .update({ display_name: displayName })
+    .eq('group_id', groupId)
+    .eq('user_id', userId)
+  if (error) throw new Error(error.message)
+}
+
+export async function leaveGroup(groupId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('trip_members')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('user_id', userId)
+  if (error) throw new Error(error.message)
+}
+
+export async function getGroupSpending(groupId: string): Promise<GroupSpendingRow[]> {
+  const rows = unwrap<Row[]>(await supabase.rpc('group_spending', { p_group: groupId }))
   return (rows ?? []).map((row) => ({
-    id: num(row.id),
-    name: String(row.name),
-    emoji: String(row.emoji),
-    sort_order: num(row.sort_order),
+    member_id: String(row.member_id),
+    display_name: String(row.display_name),
+    day: String(row.day),
+    category: String(row.category),
+    krw: num(row.krw),
+    twd: num(row.twd),
+    entry_count: num(row.entry_count),
   }))
-}
-
-export async function createCategory(name: string, emoji = 'other'): Promise<void> {
-  const { error } = await supabase.from('categories').insert({ name, emoji, sort_order: 50 })
-  if (error) throw new Error(error.message)
-}
-
-export async function deleteCategory(id: number): Promise<void> {
-  const { error } = await supabase.from('categories').delete().eq('id', id)
-  if (error) throw new Error(error.message)
 }
 
 /* ------------------------------------------------------------------ */

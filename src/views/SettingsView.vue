@@ -1,16 +1,74 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { Copy, LogOut, Users } from 'lucide-vue-next'
+import { useGroupStore } from '../stores/group'
 import { useLedgerStore } from '../stores/ledger'
 import { useSessionStore } from '../stores/session'
 import { formatKRW, formatTWD, krwToTwd } from '../utils/money'
-import { X } from 'lucide-vue-next'
+import { alertError, alertSaved, confirmDelete, toastSaved } from '../utils/alert'
 import CategoryIcon from '../components/CategoryIcon.vue'
-import { CATEGORY_ICONS, categoryIconKey } from '../utils/categoryIcons'
+import { FIXED_CATEGORIES } from '../utils/categories'
 
 const ledger = useLedgerStore()
 const session = useSessionStore()
+const group = useGroupStore()
 const router = useRouter()
+
+/* ---------- 旅伴群組 ---------- */
+onMounted(() => group.refresh())
+
+const groupMode = ref<'join' | 'create'>('join')
+const groupForm = reactive({
+  name: '韓國賞銀杏',
+  code: '',
+  /** 預設用 email @ 前面那段當名字 */
+  displayName: session.email?.split('@')[0] ?? '',
+})
+
+const me = computed(() => group.members.find((m) => m.user_id === session.userId))
+const myName = ref('')
+watch(me, (m) => (myName.value = m?.display_name ?? ''), { immediate: true })
+
+async function submitGroup() {
+  const name = groupForm.displayName.trim()
+  if (!name) return alertError('請輸入你在群組裡的名字', '還差一步')
+  const ok =
+    groupMode.value === 'create'
+      ? await group.create(groupForm.name, name)
+      : await group.join(groupForm.code, name)
+  if (ok) {
+    alertSaved(
+      groupMode.value === 'create' ? '群組建立好了' : '已加入群組',
+      groupMode.value === 'create' ? `把邀請碼 ${group.group?.invite_code} 傳給旅伴` : undefined,
+    )
+  } else {
+    alertError(group.error || '請稍後再試', groupMode.value === 'create' ? '建立失敗' : '加入失敗')
+  }
+}
+
+async function copyCode() {
+  if (!group.group) return
+  try {
+    await navigator.clipboard.writeText(group.group.invite_code)
+    toastSaved('邀請碼已複製')
+  } catch {
+    alertError(`請手動複製：${group.group.invite_code}`, '無法自動複製')
+  }
+}
+
+async function saveMyName() {
+  const name = myName.value.trim()
+  if (!name || name === me.value?.display_name) return
+  if (await group.rename(name)) toastSaved('名字已更新')
+  else alertError(group.error || '請稍後再試')
+}
+
+async function leaveGroup() {
+  if (!(await confirmDelete('退出群組？', '你的帳不會被刪除，只是旅伴看不到你的花費統計。'))) return
+  if (await group.leave()) toastSaved('已退出群組')
+  else alertError(group.error || '請稍後再試', '退出失敗')
+}
 
 const form = reactive({
   title: '',
@@ -20,20 +78,6 @@ const form = reactive({
   budget_twd: 0,
   krw_per_twd: 43,
 })
-
-const saved = ref(false)
-const newCategory = ref('')
-/** 新分類的圖示 key（存在 categories.emoji 欄位）；沒手動選就依名稱自動猜 */
-const newIcon = ref('other')
-const iconTouched = ref(false)
-watch(newCategory, (name) => {
-  if (!iconTouched.value) newIcon.value = categoryIconKey(name)
-})
-
-function pickIcon(key: string) {
-  newIcon.value = key
-  iconTouched.value = true
-}
 
 /** 設定載入後填進表單 */
 watch(
@@ -51,7 +95,7 @@ watch(
 )
 
 async function save() {
-  await ledger.saveSettings({
+  const ok = await ledger.saveSettings({
     title: form.title.trim() || '韓國旅行',
     start_date: form.start_date || null,
     end_date: form.end_date || null,
@@ -59,21 +103,13 @@ async function save() {
     budget_twd: form.budget_twd || 0,
     krw_per_twd: form.krw_per_twd > 0 ? form.krw_per_twd : 43,
   })
-  saved.value = true
-  setTimeout(() => (saved.value = false), 2000)
-}
-
-async function addCategory() {
-  const name = newCategory.value.trim()
-  if (!name) return
-  await ledger.addCategory(name, newIcon.value)
-  newCategory.value = ''
-  newIcon.value = 'other'
-  iconTouched.value = false
+  if (ok) alertSaved('設定已儲存')
+  else alertError(ledger.error || '請稍後再試')
 }
 
 async function logout() {
   await session.signOut()
+  group.reset()
   await router.replace({ name: 'login' })
 }
 </script>
@@ -150,62 +186,102 @@ async function logout() {
 
       <div class="flex items-center gap-3">
         <button class="btn-primary flex-1" type="submit">儲存設定</button>
-        <span v-if="saved" class="text-sm text-mint-600">已儲存</span>
       </div>
     </form>
 
-    <!-- 分類 -->
+    <!-- 旅伴群組 -->
     <section class="card space-y-3">
-      <h2 class="text-sm font-semibold text-ink-800">消費分類</h2>
+      <h2 class="flex items-center gap-1.5 text-sm font-semibold text-ink-800">
+        <Users :size="16" class="text-brand-600" /> 旅伴群組
+      </h2>
 
-      <ul class="flex flex-wrap gap-2">
-        <li v-for="c in ledger.categories" :key="c.id">
-          <span class="chip">
-            <CategoryIcon :name="c.name" :size="16" class="text-brand-600" />
-            {{ c.name }}
-            <button
-              type="button"
-              class="ml-0.5 text-ink-400 transition hover:text-flame-600"
-              aria-label="刪除分類"
-              @click="ledger.removeCategory(c.id)"
-            >
-              <X :size="14" />
-            </button>
-          </span>
-        </li>
-      </ul>
-
-      <form class="space-y-2" @submit.prevent="addCategory">
-        <div class="flex gap-2">
-          <span
-            class="flex w-11 shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white/65 text-brand-600"
-          >
-            <component :is="CATEGORY_ICONS[newIcon]" :size="20" :stroke-width="1.75" />
-          </span>
-          <input v-model="newCategory" class="field flex-1" placeholder="新分類名稱" />
-          <button class="btn-ghost" type="submit">新增</button>
-        </div>
-        <div class="flex flex-wrap gap-1.5">
-          <button
-            v-for="(icon, key) in CATEGORY_ICONS"
-            :key="key"
-            type="button"
-            class="flex h-9 w-9 items-center justify-center rounded-lg border transition"
-            :class="
-              newIcon === key
-                ? 'border-brand-400 bg-brand-100/80 text-brand-700'
-                : 'border-white/80 bg-white/50 text-ink-600'
-            "
-            :aria-label="`圖示 ${key}`"
-            @click="pickIcon(key)"
-          >
-            <component :is="icon" :size="18" :stroke-width="1.75" />
+      <!-- 已在群組 -->
+      <template v-if="group.group">
+        <div class="flex items-center justify-between gap-2 rounded-xl bg-brand-50/80 px-3 py-2.5">
+          <div class="min-w-0">
+            <p class="truncate text-sm font-semibold text-ink-900">{{ group.group.name }}</p>
+            <p class="text-xs text-ink-600">
+              邀請碼 <b class="tabular tracking-widest text-ink-900">{{ group.group.invite_code }}</b>
+            </p>
+          </div>
+          <button type="button" class="btn-ghost shrink-0 px-3 py-1.5 text-xs" @click="copyCode">
+            <Copy :size="14" /> 複製
           </button>
         </div>
-      </form>
-      <p class="text-xs text-ink-400">
-        刪除分類不會動到已經記過的帳（帳上存的是分類名稱文字）。
-      </p>
+
+        <div>
+          <span class="label">成員（{{ group.members.length }}）</span>
+          <ul class="flex flex-wrap gap-2">
+            <li
+              v-for="m in group.members"
+              :key="m.user_id"
+              class="chip"
+              :class="{ 'chip-on': m.user_id === session.userId }"
+            >
+              {{ m.display_name }}<template v-if="m.user_id === session.userId">（我）</template>
+            </li>
+          </ul>
+        </div>
+
+        <form class="flex gap-2" @submit.prevent="saveMyName">
+          <input v-model="myName" class="field flex-1" placeholder="我在群組裡的名字" />
+          <button class="btn-ghost" type="submit">改名</button>
+        </form>
+
+        <button type="button" class="flex items-center gap-1 text-xs text-ink-400" @click="leaveGroup">
+          <LogOut :size="13" /> 退出群組
+        </button>
+      </template>
+
+      <!-- 還沒加入 -->
+      <template v-else>
+        <p class="text-xs leading-relaxed text-ink-600">
+          各自用自己的帳號記帳，加入同一個群組後，在「總覽」可以一起看每天誰在哪個分類花了多少。
+          旅伴只看得到統計，看不到你的每一筆明細和餘額。
+        </p>
+
+        <div class="flex rounded-full bg-white/60 p-0.5 text-sm">
+          <button
+            v-for="m in [{ v: 'join', l: '輸入邀請碼加入' }, { v: 'create', l: '建立新群組' }] as const"
+            :key="m.v"
+            type="button"
+            class="flex-1 rounded-full py-1.5 transition"
+            :class="groupMode === m.v ? 'bg-white font-semibold text-ink-900 shadow-sm' : 'text-ink-600'"
+            @click="groupMode = m.v"
+          >
+            {{ m.l }}
+          </button>
+        </div>
+
+        <form class="space-y-2" @submit.prevent="submitGroup">
+          <input
+            v-if="groupMode === 'join'"
+            v-model="groupForm.code"
+            class="field tabular uppercase tracking-widest"
+            placeholder="6 碼邀請碼"
+            maxlength="6"
+            autocapitalize="characters"
+          />
+          <input v-else v-model="groupForm.name" class="field" placeholder="群組名稱" />
+          <input v-model="groupForm.displayName" class="field" placeholder="你的名字（旅伴看到的）" />
+          <button class="btn-primary w-full" type="submit" :disabled="group.loading">
+            {{ groupMode === 'join' ? '加入' : '建立並取得邀請碼' }}
+          </button>
+        </form>
+      </template>
+    </section>
+
+    <!-- 分類（固定） -->
+    <section class="card space-y-3">
+      <h2 class="text-sm font-semibold text-ink-800">消費分類</h2>
+      <ul class="flex flex-wrap gap-2">
+        <li v-for="c in FIXED_CATEGORIES" :key="c.name" class="chip">
+          <span class="h-2.5 w-2.5 rounded-sm" :style="{ background: c.color }" />
+          <CategoryIcon :name="c.name" :size="16" class="text-ink-600" />
+          {{ c.name }}
+        </li>
+      </ul>
+      <p class="text-xs text-ink-400">分類是固定的，旅伴之間才能互相比較。</p>
     </section>
 
     <!-- 統計小結 -->

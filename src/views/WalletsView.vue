@@ -4,6 +4,7 @@ import type { Currency, WalletKind } from '../db/api'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney } from '../utils/money'
 import { tracksBalance } from '../utils/wallet'
+import { alertError, alertSaved, confirmDelete, toastSaved } from '../utils/alert'
 
 const ledger = useLedgerStore()
 
@@ -11,7 +12,8 @@ const kindLabels: Record<WalletKind, string> = {
   easywallet: '悠遊付',
   cash: '現金',
   card: '信用卡',
-  transit: '交通卡',
+  transit: '交通卡（T-money）',
+  prepaid: '儲值卡（Wowpass）',
   other: '其他',
 }
 
@@ -36,6 +38,9 @@ watch(
     if (!tracksBalance(kind)) {
       draft.balance_currency = 'TWD'
       draft.opening_balance = 0
+    } else if (kind === 'cash' || kind === 'transit' || kind === 'prepaid') {
+      // 韓幣現金、T-money、Wowpass 在韓國都是韓元
+      draft.balance_currency = 'KRW'
     }
   },
 )
@@ -44,37 +49,56 @@ const adding = ref(false)
 
 async function add() {
   if (!draft.name.trim()) return
-  await ledger.addWallet({
+  const ok = await ledger.addWallet({
     name: draft.name.trim(),
     kind: draft.kind,
     balance_currency: draft.balance_currency,
     opening_balance: tracksBalance(draft.kind) ? draft.opening_balance || 0 : 0,
     default_krw_per_twd: draft.default_krw_per_twd,
   })
+  if (!ok) {
+    alertError(ledger.error || '請稍後再試', '新增失敗')
+    return
+  }
+  alertSaved(`已新增「${draft.name.trim()}」`)
   draft.name = ''
   draft.opening_balance = 0
   draft.default_krw_per_twd = null
   adding.value = false
 }
 
+/** 欄位改完（離開輸入框）就存，用小 toast 告知 */
+async function notify(ok: boolean, message: string) {
+  if (ok) toastSaved(message)
+  else alertError(ledger.error || '請稍後再試')
+}
+
 async function saveOpening(id: number, value: number) {
-  await ledger.editWallet(id, { opening_balance: value })
+  notify(await ledger.editWallet(id, { opening_balance: value }), '期初餘額已儲存')
 }
 
 async function saveRate(id: number, value: string) {
   const rate = Number(value)
-  await ledger.editWallet(id, {
-    default_krw_per_twd: value === '' || !Number.isFinite(rate) || rate <= 0 ? null : rate,
-  })
+  notify(
+    await ledger.editWallet(id, {
+      default_krw_per_twd: value === '' || !Number.isFinite(rate) || rate <= 0 ? null : rate,
+    }),
+    '匯率已儲存',
+  )
 }
 
 async function toggleActive(id: number, isActive: boolean) {
-  await ledger.editWallet(id, { is_active: !isActive })
+  notify(await ledger.editWallet(id, { is_active: !isActive }), isActive ? '已停用' : '已啟用')
 }
 
 async function remove(id: number, name: string) {
-  if (!window.confirm(`刪除「${name}」？（已經有帳掛在上面會刪不掉，請改用停用）`)) return
-  await ledger.removeWallet(id)
+  if (!(await confirmDelete(`刪除「${name}」？`, '已經有帳記在上面的話會刪不掉，可以改用「停用」。'))) return
+  if (await ledger.removeWallet(id)) {
+    toastSaved('已刪除')
+  } else {
+    alertError('這個錢包已經有帳記在上面，請改用「停用」。', '無法刪除')
+    ledger.error = ''
+  }
 }
 </script>
 
@@ -193,7 +217,7 @@ async function remove(id: number, name: string) {
       <form v-else class="card space-y-3" @submit.prevent="add">
         <div>
           <label class="label" for="w-name">名稱</label>
-          <input id="w-name" v-model="draft.name" class="field" placeholder="例：旅伴悠遊付、T-money 卡" required />
+          <input id="w-name" v-model="draft.name" class="field" placeholder="例：Wowpass、T-money" required />
         </div>
 
         <div class="grid grid-cols-2 gap-2">
