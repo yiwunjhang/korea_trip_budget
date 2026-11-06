@@ -61,10 +61,23 @@ const walletDelta = computed(() => {
   return kind.value === 'expense' ? -value : value
 })
 
-/** 用悠遊付花費時，預估這筆能拿多少回饋 */
+/** 用悠遊付花費時：額度 − 已刷 − 這筆 = 剩多少，以及這筆能拿多少回饋 */
 const rebatePreview = computed(() => {
-  if (kind.value !== 'expense' || wallet.value?.kind !== 'easywallet') return null
-  return previewRebate(amountTwd.value, seoulInputToISO(spentAt.value), ledger.rebateReport)
+  if (kind.value !== 'expense' || wallet.value?.kind !== 'easywallet' || walletId.value === null)
+    return null
+  return previewRebate(
+    walletId.value,
+    amountTwd.value,
+    seoulInputToISO(spentAt.value),
+    ledger.rebateReport,
+  )
+})
+
+/** 額度用掉的比例（含這筆），給進度條用 */
+const quotaUsedPercent = computed(() => {
+  const p = rebatePreview.value
+  if (!p) return 0
+  return Math.min(100, Math.max(0, ((p.quota - p.quotaAfter) / p.quota) * 100))
 })
 
 const balanceAfter = computed(() => (wallet.value ? wallet.value.balance + walletDelta.value : 0))
@@ -247,13 +260,53 @@ async function submit() {
       </span>
     </p>
 
-    <p v-if="rebatePreview" class="tabular text-sm text-mint-600">
-      <template v-if="rebatePreview.rebate > 0">
-        預估回饋 {{ formatMoney(rebatePreview.rebate, 'TWD') }}（{{ rebatePreview.stage.label }}累積
-        {{ rebatePreview.stageTotalAfter }} / {{ STAGE_CAP_TWD }}）
-      </template>
-      <span v-else class="text-ink-400">{{ rebatePreview.stage.label }}回饋已達上限，這筆沒有 10.5%</span>
-    </p>
+    <!-- 悠遊付回饋額度：用減法顯示還剩多少 -->
+    <div
+      v-if="rebatePreview"
+      class="rounded-xl border p-3"
+      :class="rebatePreview.quotaAfter < 0 ? 'border-flame-100 bg-flame-50/80' : 'border-white/80 bg-white/50'"
+    >
+      <div class="flex items-baseline justify-between text-xs">
+        <span class="font-medium text-ink-800">
+          {{ wallet?.name }}・{{ rebatePreview.stage.label }}額度
+        </span>
+        <span class="text-ink-400">回饋上限 NT${{ STAGE_CAP_TWD }}</span>
+      </div>
+
+      <p class="tabular mt-1.5 text-sm text-ink-600">
+        {{ formatMoney(rebatePreview.quota, 'TWD') }}
+        − 已刷 {{ formatMoney(rebatePreview.spentBefore, 'TWD') }}
+        <template v-if="numericAmount > 0">− 這筆 {{ formatMoney(amountTwd, 'TWD') }}</template>
+      </p>
+      <p
+        class="tabular text-xl font-bold"
+        :class="rebatePreview.quotaAfter < 0 ? 'text-flame-600' : 'text-ink-900'"
+      >
+        <template v-if="rebatePreview.quotaAfter >= 0">
+          剩 {{ formatMoney(rebatePreview.quotaAfter, 'TWD') }}
+        </template>
+        <template v-else>超過 {{ formatMoney(-rebatePreview.quotaAfter, 'TWD') }}</template>
+      </p>
+
+      <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/70">
+        <div
+          class="h-full rounded-full transition-all"
+          :class="rebatePreview.quotaAfter < 0 ? 'bg-flame-500' : 'bg-brand-500'"
+          :style="{ width: `${quotaUsedPercent}%` }"
+        />
+      </div>
+
+      <p v-if="numericAmount > 0" class="tabular mt-2 text-xs">
+        <span v-if="rebatePreview.rebate > 0" class="text-mint-600">
+          這筆回饋約 {{ formatMoney(rebatePreview.rebate, 'TWD') }}，累積
+          {{ rebatePreview.stageTotalAfter }} / {{ STAGE_CAP_TWD }}
+        </span>
+        <span v-else class="text-flame-600">回饋已經拿滿，這筆沒有 10.5%</span>
+      </p>
+      <p v-if="numericAmount > 0 && rebatePreview.overBy > 0" class="mt-1 text-xs text-flame-600">
+        這筆有 {{ formatMoney(rebatePreview.overBy, 'TWD') }} 超出額度、沒有回饋，建議改刷卡或付現。
+      </p>
+    </div>
 
     <button class="btn-primary w-full" type="submit" :disabled="!canSubmit">
       {{ saving ? '儲存中…' : '記一筆' }}

@@ -4,8 +4,11 @@ import type { Transaction, WalletBalance } from '../db/api'
  * 悠遊付「韓國 TWQR」回饋估算（2026/9/1 ~ 2026/12/31）。
  *
  * 活動一：每筆扣款台幣 × 10.5%，四捨五入到整數；每個階段（主活動／連假加開）
- *         每人上限 600 元，退款會扣回。另外免 1.5% 海外手續費（直接少扣，不是回饋）。
+ *         每位會員上限 600 元，退款會扣回。另外免 1.5% 海外手續費（直接少扣，不是回饋）。
  * 活動二：每月第一筆成功交易送兩張券（樂天免稅店 100 元券、返台 10% 券，上限 50 元）。
+ *
+ * 上限是「每位會員」各自算，所以這裡以「每個悠遊付錢包」為單位：
+ * 兩個人各建一個悠遊付錢包，額度就各自扣。
  *
  * 這裡只是估算：實際扣款匯率、活動總額度是否額滿，以悠遊付 APP 為準。
  * 「週五會員日 2%」「月級挑戰 3%」有自己的規則與上限，沒有算進來。
@@ -14,6 +17,8 @@ import type { Transaction, WalletBalance } from '../db/api'
 export const REBATE_RATE = 0.105
 export const FEE_WAIVED_RATE = 0.015
 export const STAGE_CAP_TWD = 600
+/** 刷到這個金額（台幣）回饋就會到 600 上限：600 ÷ 10.5% ≈ 5,714 */
+export const STAGE_SPEND_CAP_TWD = Math.floor(STAGE_CAP_TWD / REBATE_RATE)
 
 export interface RebateStage {
   /** 例：11月主活動 */
@@ -57,30 +62,26 @@ export function rebateFor(amountTwd: number): number {
   return Math.round(amountTwd * REBATE_RATE)
 }
 
-function isEasyWalletSpend(tx: Transaction, wallets: Map<number, WalletBalance>): boolean {
-  return (
-    (tx.kind === 'expense' || tx.kind === 'refund') &&
-    wallets.get(tx.wallet_id)?.kind === 'easywallet' &&
-    stageOf(tx.spent_at) !== undefined
-  )
-}
-
 export interface StageRebate {
+  walletId: number
+  walletName: string
   stage: RebateStage
-  /** 這階段悠遊付淨扣款（台幣，退款已扣除） */
+  /** 這階段這個錢包的淨扣款（台幣，退款已扣除） */
   spentTwd: number
   /** 未套上限的回饋合計 */
   rawRebate: number
   /** 套上 600 上限後 */
   rebate: number
-  /** 還能再拿多少才到上限 */
+  /** 回饋還差多少到上限 */
   roomLeft: number
-  /** 再刷多少台幣就會到上限 */
-  spendToCap: number
+  /** 刷卡額度還剩多少台幣（= 5,714 − 已刷；負數表示超過） */
+  quotaLeft: number
   count: number
 }
 
 export interface MonthCoupons {
+  walletId: number
+  walletName: string
   /** yyyy-mm */
   month: string
   /** 該月第一筆悠遊付交易時間 */
@@ -97,45 +98,77 @@ export interface RebateReport {
   coupons: MonthCoupons[]
 }
 
+const stageKey = (walletId: number, label: string) => `${walletId}|${label}`
+
 export function buildRebateReport(
   transactions: Transaction[],
   walletList: WalletBalance[],
 ): RebateReport {
   const wallets = new Map(walletList.map((w) => [w.wallet_id, w]))
   const eligible = transactions
-    .filter((tx) => isEasyWalletSpend(tx, wallets))
+    .filter(
+      (tx) =>
+        (tx.kind === 'expense' || tx.kind === 'refund') &&
+        wallets.get(tx.wallet_id)?.kind === 'easywallet' &&
+        stageOf(tx.spent_at) !== undefined,
+    )
     .sort((a, b) => a.spent_at.localeCompare(b.spent_at))
 
   const byStage = new Map<string, StageRebate>()
-  const firstByMonth = new Map<string, string>()
+  const firstByMonth = new Map<string, MonthCoupons>()
 
   for (const tx of eligible) {
     const stage = stageOf(tx.spent_at)!
+    const walletName = wallets.get(tx.wallet_id)?.name ?? ''
     const sign = tx.kind === 'refund' ? -1 : 1
+    const key = stageKey(tx.wallet_id, stage.label)
     const entry =
-      byStage.get(stage.label) ??
-      { stage, spentTwd: 0, rawRebate: 0, rebate: 0, roomLeft: 0, spendToCap: 0, count: 0 }
+      byStage.get(key) ??
+      {
+        walletId: tx.wallet_id,
+        walletName,
+        stage,
+        spentTwd: 0,
+        rawRebate: 0,
+        rebate: 0,
+        roomLeft: 0,
+        quotaLeft: 0,
+        count: 0,
+      }
     entry.spentTwd += sign * tx.amount_twd
     entry.rawRebate += sign * rebateFor(tx.amount_twd)
     entry.count += 1
-    byStage.set(stage.label, entry)
+    byStage.set(key, entry)
 
     if (tx.kind === 'expense') {
       const month = taipeiDate(tx.spent_at).slice(0, 7)
-      if (!firstByMonth.has(month)) firstByMonth.set(month, tx.spent_at)
+      const monthKey = `${tx.wallet_id}|${month}`
+      if (!firstByMonth.has(monthKey)) {
+        firstByMonth.set(monthKey, {
+          walletId: tx.wallet_id,
+          walletName,
+          month,
+          firstAt: tx.spent_at,
+          lotteSoldOut: LOTTE_COUPON_SOLD_OUT.has(month),
+        })
+      }
     }
   }
 
-  const stages = STAGES.map((s) => byStage.get(s.label))
-    .filter((x): x is StageRebate => Boolean(x))
+  const stageOrder = (label: string) => STAGES.findIndex((s) => s.label === label)
+  const stages = [...byStage.values()]
+    .sort(
+      (a, b) =>
+        stageOrder(a.stage.label) - stageOrder(b.stage.label) ||
+        (wallets.get(a.walletId)?.sort_order ?? 0) - (wallets.get(b.walletId)?.sort_order ?? 0),
+    )
     .map((entry) => {
       const rebate = Math.min(STAGE_CAP_TWD, Math.max(0, entry.rawRebate))
-      const roomLeft = STAGE_CAP_TWD - rebate
       return {
         ...entry,
         rebate,
-        roomLeft,
-        spendToCap: Math.max(0, Math.ceil(roomLeft / REBATE_RATE)),
+        roomLeft: STAGE_CAP_TWD - rebate,
+        quotaLeft: STAGE_SPEND_CAP_TWD - entry.spentTwd,
       }
     })
 
@@ -146,27 +179,53 @@ export function buildRebateReport(
     totalRebate: stages.reduce((sum, s) => sum + s.rebate, 0),
     totalSpentTwd,
     feeSaved: Math.max(0, totalSpentTwd * FEE_WAIVED_RATE),
-    coupons: [...firstByMonth.entries()].map(([month, firstAt]) => ({
-      month,
-      firstAt,
-      lotteSoldOut: LOTTE_COUPON_SOLD_OUT.has(month),
-    })),
+    coupons: [...firstByMonth.values()],
   }
 }
 
+export interface RebatePreview {
+  stage: RebateStage
+  /** 額度 */
+  quota: number
+  /** 這階段這個錢包已刷 */
+  spentBefore: number
+  /** 扣掉這筆後還剩多少額度（負數 = 超過） */
+  quotaAfter: number
+  /** 這筆超出額度的部分（沒有回饋） */
+  overBy: number
+  /** 這筆大概能拿多少回饋 */
+  rebate: number
+  /** 這筆之後這階段累積回饋 */
+  stageTotalAfter: number
+}
+
 /**
- * 記帳前預覽：這筆（台幣 amountTwd，時間 iso）大概能拿多少回饋，
- * 會考慮同階段已經累積的回饋與 600 上限。
+ * 記帳前預覽：這筆（台幣 amountTwd，時間 iso）用 walletId 付，
+ * 額度扣完剩多少、能拿多少回饋。
  */
 export function previewRebate(
+  walletId: number,
   amountTwd: number,
   iso: string,
   report: RebateReport,
-): { stage: RebateStage; rebate: number; stageTotalAfter: number } | null {
+): RebatePreview | null {
   const stage = stageOf(iso)
-  if (!stage || amountTwd <= 0) return null
-  const current = report.stages.find((s) => s.stage.label === stage.label)
-  const before = current?.rebate ?? 0
-  const after = Math.min(STAGE_CAP_TWD, before + rebateFor(amountTwd))
-  return { stage, rebate: after - before, stageTotalAfter: after }
+  if (!stage) return null
+  const current = report.stages.find(
+    (s) => s.walletId === walletId && s.stage.label === stage.label,
+  )
+  const spentBefore = current?.spentTwd ?? 0
+  const rebateBefore = current?.rebate ?? 0
+  const rebateAfter = Math.min(STAGE_CAP_TWD, rebateBefore + rebateFor(amountTwd))
+  const quotaBefore = STAGE_SPEND_CAP_TWD - spentBefore
+  const quotaAfter = quotaBefore - amountTwd
+  return {
+    stage,
+    quota: STAGE_SPEND_CAP_TWD,
+    spentBefore,
+    quotaAfter,
+    overBy: Math.min(amountTwd, Math.max(0, -quotaAfter)),
+    rebate: rebateAfter - rebateBefore,
+    stageTotalAfter: rebateAfter,
+  }
 }
