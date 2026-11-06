@@ -49,7 +49,7 @@ function emoji(category: string): string {
       <div v-if="!byCategory.length" class="card text-center text-sm text-ink-400">
         還沒有花費紀錄
       </div>
-      <ul v-else class="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white">
+      <ul v-else class="glass divide-y divide-line overflow-hidden">
         <li
           v-for="row in byCategory"
           :key="row.category"

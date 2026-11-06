@@ -10,7 +10,7 @@ const tabs = [
 
 <template>
   <nav
-    class="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
+    class="fixed inset-x-0 bottom-0 z-20 border-t border-white/60 bg-white/40 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_-16px_rgba(122,80,4,0.35)] backdrop-blur-xl backdrop-saturate-150"
   >
     <div class="mx-auto grid max-w-xl grid-cols-4">
       <router-link
@@ -18,7 +18,7 @@ const tabs = [
         :key="tab.name"
         :to="{ name: tab.name }"
         class="flex flex-col items-center gap-0.5 py-2.5 text-xs text-ink-400 transition"
-        active-class="text-brand-600"
+        active-class="font-semibold !text-brand-600"
       >
         <span class="text-lg leading-none">{{ tab.icon }}</span>
         {{ tab.label }}

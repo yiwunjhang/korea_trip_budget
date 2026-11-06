@@ -146,13 +146,13 @@ async function submit() {
     <div>
       <span class="label">金額</span>
       <div class="flex gap-2">
-        <div class="flex overflow-hidden rounded-xl border border-line">
+        <div class="flex overflow-hidden rounded-xl border border-white/80">
           <button
             v-for="c in (['KRW', 'TWD'] as Currency[])"
             :key="c"
             type="button"
             class="px-3 text-sm font-medium transition"
-            :class="currency === c ? 'bg-brand-500 text-white' : 'bg-white text-ink-600'"
+            :class="currency === c ? 'bg-brand-400 text-ink-900' : 'bg-white/55 text-ink-600'"
             @click="currency = c"
           >
             {{ c === 'KRW' ? '₩' : 'NT$' }}

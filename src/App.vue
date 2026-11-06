@@ -2,6 +2,7 @@
 import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppNav from './components/AppNav.vue'
+import GinkgoBackdrop from './components/GinkgoBackdrop.vue'
 import { useSessionStore } from './stores/session'
 import { useLedgerStore } from './stores/ledger'
 import { supabaseConfigured } from './supabase'
@@ -25,10 +26,12 @@ watch(() => session.userId, load)
 </script>
 
 <template>
-  <div class="min-h-screen bg-canvas pb-24">
+  <div class="relative isolate min-h-screen pb-24">
+    <GinkgoBackdrop />
+
     <header
       v-if="showNav"
-      class="sticky top-0 z-10 border-b border-line bg-canvas/90 px-4 py-3 backdrop-blur"
+      class="sticky top-0 z-10 border-b border-white/60 bg-white/35 px-4 py-3 backdrop-blur-xl backdrop-saturate-150"
     >
       <div class="mx-auto flex max-w-xl items-center justify-between">
         <h1 class="text-base font-bold text-ink-900">🇰🇷 {{ title }}</h1>

@@ -1,37 +1,40 @@
 @import 'tailwindcss';
 
 /* =====================================================================
-   設計系統：靛藍 × 朱紅（韓國國旗的配色）＋ 冷調白底
-   手機單手操作優先：大按鈕、底部導覽、數字用等寬字顯示。
+   設計系統：銀杏 × 毛玻璃
+   金黃銀杏葉＋秋日天空的暖色背景，卡片是半透明毛玻璃，背景的光暈與葉子
+   會透出來。手機單手操作優先：大按鈕、底部導覽、數字用等寬字顯示。
    ===================================================================== */
 
 @theme {
-  --color-canvas: #f5f7fb;
+  --color-canvas: #fbf3df;
 
-  --color-ink-900: #16202e;
-  --color-ink-800: #26344a;
-  --color-ink-600: #5b6b82;
-  --color-ink-400: #94a2b6;
-  --color-line: #e3e8f0;
+  /* 文字：深栗色（比純黑柔和，跟金黃色比較搭） */
+  --color-ink-900: #2f2414;
+  --color-ink-800: #43341d;
+  --color-ink-600: #6f5c3e;
+  --color-ink-400: #a08c6b;
+  --color-line: rgb(214 176 98 / 0.28);
 
-  /* 主色：靛藍 */
-  --color-brand-50: #eef3ff;
-  --color-brand-100: #dde7ff;
-  --color-brand-200: #c2d1fb;
-  --color-brand-500: #3b5bdb;
-  --color-brand-600: #2f49b2;
-  --color-brand-700: #24398c;
+  /* 主色：銀杏金 */
+  --color-brand-50: #fff6dc;
+  --color-brand-100: #fdeab0;
+  --color-brand-200: #f9d873;
+  --color-brand-400: #f4c22b;
+  --color-brand-500: #e3a50b;
+  --color-brand-600: #a86f00;
+  --color-brand-700: #7a5004;
 
-  /* 強調：朱紅（超支、扣款） */
-  --color-flame-50: #fff1f0;
-  --color-flame-100: #ffe0dd;
-  --color-flame-500: #e03131;
-  --color-flame-600: #c02626;
+  /* 強調：楓紅（超支、扣款） */
+  --color-flame-50: #fff1ea;
+  --color-flame-100: #ffd9c7;
+  --color-flame-500: #e2531c;
+  --color-flame-600: #c0400f;
 
-  /* 正向：剩餘、退款 */
-  --color-mint-50: #eafaf3;
-  --color-mint-500: #0ca678;
-  --color-mint-600: #099268;
+  /* 正向：剛轉黃前的銀杏綠（剩餘、退款、回饋） */
+  --color-mint-50: #f1f6dc;
+  --color-mint-500: #7f9a1c;
+  --color-mint-600: #5e7710;
 
   --font-sans: 'Noto Sans TC', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
@@ -42,9 +45,18 @@ html {
 
 body {
   margin: 0;
+  min-height: 100vh;
   color: var(--color-ink-900);
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
+  /* 秋日天空 → 落葉金黃；光暈讓毛玻璃有東西可以透 */
+  background:
+    radial-gradient(60% 40% at 15% 10%, rgb(255 214 92 / 0.55), transparent 70%),
+    radial-gradient(50% 35% at 90% 30%, rgb(255 180 60 / 0.4), transparent 70%),
+    radial-gradient(70% 45% at 30% 85%, rgb(250 200 70 / 0.45), transparent 70%),
+    radial-gradient(45% 30% at 85% 80%, rgb(170 205 235 / 0.45), transparent 70%),
+    linear-gradient(180deg, #f3ead2 0%, #fbf0d4 45%, #fae4b0 100%);
+  background-attachment: fixed;
 }
 
 /* 金額一律等寬，不會因為位數不同跳動 */
@@ -54,8 +66,15 @@ body {
 
 /* ---------- 可重複使用的小元件 ---------- */
 @layer components {
+  /* 毛玻璃卡片：半透明白 + 背景模糊 + 白色細邊模擬玻璃反光 */
+  .card,
+  .glass {
+    @apply rounded-2xl border border-white/70 bg-white/45 backdrop-blur-xl backdrop-saturate-150
+      shadow-[0_8px_24px_-12px_rgba(122,80,4,0.25),inset_0_1px_0_rgba(255,255,255,0.7)];
+  }
+
   .card {
-    @apply rounded-2xl border border-line bg-white p-4 shadow-[0_1px_2px_rgba(22,32,46,0.04)];
+    @apply p-4;
   }
 
   /* 基礎 button 樣式：變體共用同一組 @apply，避免 @apply 自訂 class */
@@ -68,22 +87,24 @@ body {
       disabled:active:scale-100;
   }
 
+  /* 金黃底配深栗字，比白字清楚 */
   .btn-primary {
-    @apply bg-brand-500 text-white hover:bg-brand-600;
+    @apply bg-linear-to-br from-brand-400 to-brand-500 font-semibold text-ink-900
+      shadow-[0_4px_14px_-4px_rgba(227,165,11,0.6)] hover:brightness-105;
   }
 
   .btn-ghost {
-    @apply border border-line bg-white text-ink-800 hover:bg-brand-50;
+    @apply border border-white/70 bg-white/55 text-ink-800 hover:bg-white/75;
   }
 
   .btn-danger {
-    @apply border border-flame-100 bg-flame-50 text-flame-600 hover:bg-flame-100;
+    @apply border border-flame-100 bg-flame-50/80 text-flame-600 hover:bg-flame-100;
   }
 
   .field {
-    @apply w-full rounded-xl border border-line bg-white px-3 py-2.5 text-base
+    @apply w-full rounded-xl border border-white/80 bg-white/65 px-3 py-2.5 text-base
       text-ink-900 outline-none transition placeholder:text-ink-400
-      focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+      focus:border-brand-400 focus:bg-white/85 focus:ring-2 focus:ring-brand-200/60;
   }
 
   .label {
@@ -91,11 +112,11 @@ body {
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full border border-line bg-white
+    @apply inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/55
       px-3 py-1.5 text-sm text-ink-800 transition;
   }
 
   .chip-on {
-    @apply border-brand-500 bg-brand-50 text-brand-700;
+    @apply border-brand-400 bg-brand-100/80 text-brand-700;
   }
 }

@@ -56,7 +56,7 @@ async function remove(tx: Transaction) {
         <span class="tabular text-xs text-ink-400">{{ formatKRW(group.krw) }}</span>
       </div>
 
-      <ul class="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white">
+      <ul class="glass divide-y divide-line overflow-hidden">
         <li v-for="tx in group.list" :key="tx.id" class="flex items-center gap-3 px-4 py-3">
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-medium text-ink-900">
