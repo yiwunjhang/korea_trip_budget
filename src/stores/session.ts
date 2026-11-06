@@ -44,7 +44,13 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   async function signUp(mail: string, password: string) {
-    const { data, error } = await supabase.auth.signUp({ email: mail.trim(), password })
+    const { data, error } = await supabase.auth.signUp({
+      email: mail.trim(),
+      password,
+      // 驗證信點下去後回到目前這個網址（本機或 GitHub Pages），
+      // 不然會跳去 Supabase 預設的 localhost:3000。這個網址要加進 Supabase 的 Redirect URLs。
+      options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
+    })
     if (error) throw new Error(error.message)
     // Supabase 專案若開啟 email 驗證，這裡不會拿到 session，需先去信箱點連結
     if (data.session) {
