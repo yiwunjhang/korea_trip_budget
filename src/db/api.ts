@@ -268,6 +268,12 @@ export async function updateWallet(
   if (error) throw new Error(error.message)
 }
 
+/** 錢包恢復預設 5 種；有帳的舊錢包改停用、沒帳的刪掉（見 schema.sql reset_default_wallets） */
+export async function resetDefaultWallets(): Promise<void> {
+  const { error } = await supabase.rpc('reset_default_wallets')
+  if (error) throw new Error(error.message)
+}
+
 /** 刪除錢包。已有帳掛在上面時資料庫會擋（on delete restrict），改為停用即可。 */
 export async function deleteWallet(id: number): Promise<void> {
   const { error } = await supabase.from('wallets').delete().eq('id', id)

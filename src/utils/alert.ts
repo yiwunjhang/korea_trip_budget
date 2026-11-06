@@ -48,6 +48,21 @@ export function alertError(text: string, title = '儲存失敗') {
   return base.fire({ icon: 'error', title, text, iconColor: '#e2531c', confirmButtonText: '知道了' })
 }
 
+/** 一般確認（非刪除），按確認鈕才回傳 true；html 可放條列說明 */
+export async function confirmAction(title: string, html: string, confirmText = '確定'): Promise<boolean> {
+  const result = await base.fire({
+    icon: 'question',
+    title,
+    html,
+    iconColor: '#e3a50b',
+    showCancelButton: true,
+    confirmButtonText: confirmText,
+    cancelButtonText: '取消',
+    reverseButtons: true,
+  })
+  return result.isConfirmed
+}
+
 /** 刪除前確認，按「刪除」才回傳 true */
 export async function confirmDelete(title: string, text?: string): Promise<boolean> {
   const result = await base.fire({

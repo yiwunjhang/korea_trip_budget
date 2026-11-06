@@ -496,6 +496,70 @@ begin
 end $fn$;
 
 -- =====================================================================
+-- reset_default_wallets()：把錢包恢復成預設 5 種（悠遊付／韓幣現金／Wowpass／信用卡／T-money）。
+--  - 預設錢包已存在（同名）就沿用，期初餘額與帳都保留，只把種類、幣別、排序改回預設並啟用
+--  - 舊版的「韓元現金」視為「韓幣現金」，直接改名沿用
+--  - 其他錢包：沒有帳就刪掉；有帳就停用（帳不會不見，只是記帳時不再出現）
+-- invoker 權限，RLS 只讓它動自己的錢包。
+-- =====================================================================
+create or replace function public.reset_default_wallets()
+returns void
+language plpgsql
+as $fn$
+declare
+  uid uuid := auth.uid();
+  d record;
+begin
+  if uid is null then
+    raise exception '未登入';
+  end if;
+
+  -- 舊名稱改成新名稱（新名稱還不存在時）
+  update public.wallets w set name = '韓幣現金'
+  where w.user_id = uid and w.name = '韓元現金'
+    and not exists (select 1 from public.wallets x where x.user_id = uid and x.name = '韓幣現金');
+
+  for d in
+    select * from (values
+      ('悠遊付',   'easywallet', 'KRW', 1),
+      ('韓幣現金', 'cash',       'KRW', 2),
+      ('Wowpass',  'prepaid',    'KRW', 3),
+      ('信用卡',   'card',       'TWD', 4),
+      ('T-money',  'transit',    'KRW', 5)
+    ) as v(name, kind, currency, sort_order)
+  loop
+    -- 悠遊付是扣台幣
+    if d.kind = 'easywallet' then d.currency := 'TWD'; end if;
+
+    if exists (select 1 from public.wallets w where w.user_id = uid and w.name = d.name) then
+      update public.wallets w
+      set kind = d.kind, balance_currency = d.currency, sort_order = d.sort_order, is_active = true
+      where w.user_id = uid and w.name = d.name;
+    else
+      insert into public.wallets (user_id, name, kind, balance_currency, opening_balance, sort_order)
+      values (uid, d.name, d.kind, d.currency, 0, d.sort_order);
+    end if;
+  end loop;
+
+  -- 不在預設清單的：有帳就停用，沒帳就刪
+  update public.wallets w set is_active = false, sort_order = 90
+  where w.user_id = uid
+    and w.name not in ('悠遊付', '韓幣現金', 'Wowpass', '信用卡', 'T-money')
+    and exists (
+      select 1 from public.transactions t
+      where t.wallet_id = w.id or t.funded_wallet_id = w.id
+    );
+
+  delete from public.wallets w
+  where w.user_id = uid
+    and w.name not in ('悠遊付', '韓幣現金', 'Wowpass', '信用卡', 'T-money')
+    and not exists (
+      select 1 from public.transactions t
+      where t.wallet_id = w.id or t.funded_wallet_id = w.id
+    );
+end $fn$;
+
+-- =====================================================================
 -- 權限：Supabase 的 public schema 預設就會授權給 authenticated，
 -- 這裡再明確寫一次，避免專案的 default privileges 被改過而踩雷。
 -- （資料安全靠上面的 RLS，不是靠這裡的 grant。）
@@ -509,6 +573,8 @@ grant select
      public.v_daily_totals, public.v_category_totals
   to authenticated;
 grant execute on function public.seed_defaults() to authenticated;
+revoke execute on function public.reset_default_wallets() from public, anon;
+grant execute on function public.reset_default_wallets() to authenticated;
 
 -- 旅伴群組：表格只開讀、改名、退出（新增走 RPC）
 grant select, update, delete on public.trip_groups, public.trip_members to authenticated;

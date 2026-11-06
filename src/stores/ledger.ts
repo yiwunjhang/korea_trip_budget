@@ -114,6 +114,7 @@ export const useLedgerStore = defineStore('ledger', () => {
     write(() => api.updateWallet(id, patch))
 
   const removeWallet = (id: number) => write(() => api.deleteWallet(id))
+  const resetWallets = () => write(() => api.resetDefaultWallets())
 
   return {
     settings,
@@ -136,5 +137,6 @@ export const useLedgerStore = defineStore('ledger', () => {
     addWallet,
     editWallet,
     removeWallet,
+    resetWallets,
   }
 })

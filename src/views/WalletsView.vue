@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { RotateCcw } from 'lucide-vue-next'
 import type { Currency, WalletKind } from '../db/api'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney } from '../utils/money'
 import { tracksBalance } from '../utils/wallet'
-import { alertError, alertSaved, confirmDelete, toastSaved } from '../utils/alert'
+import { alertError, alertSaved, confirmAction, confirmDelete, toastSaved } from '../utils/alert'
 
 const ledger = useLedgerStore()
 
@@ -99,6 +100,22 @@ async function remove(id: number, name: string) {
     alertError('這個錢包已經有帳記在上面，請改用「停用」。', '無法刪除')
     ledger.error = ''
   }
+}
+
+async function resetDefaults() {
+  const ok = await confirmAction(
+    '恢復預設錢包？',
+    `<div style="text-align:left;line-height:1.7">
+      會變成：悠遊付、韓幣現金、Wowpass、信用卡、T-money<br/>
+      ・同名的錢包保留原本的期初餘額與帳<br/>
+      ・其他錢包：記過帳的改為停用，沒記過的刪除<br/>
+      ・已經記的帳都不會不見
+    </div>`,
+    '恢復預設',
+  )
+  if (!ok) return
+  if (await ledger.resetWallets()) alertSaved('已恢復預設錢包')
+  else alertError(ledger.error || '請稍後再試', '恢復失敗')
 }
 </script>
 
@@ -211,8 +228,16 @@ async function remove(id: number, name: string) {
     </section>
 
     <!-- 新增 -->
-    <section>
+    <section class="space-y-2">
       <button v-if="!adding" class="btn-ghost w-full" @click="adding = true">＋ 新增錢包／付款方式</button>
+      <button
+        v-if="!adding"
+        type="button"
+        class="flex w-full items-center justify-center gap-1 py-1 text-xs text-ink-400 transition hover:text-brand-600"
+        @click="resetDefaults"
+      >
+        <RotateCcw :size="13" /> 恢復預設錢包（悠遊付／韓幣現金／Wowpass／信用卡／T-money）
+      </button>
 
       <form v-else class="card space-y-3" @submit.prevent="add">
         <div>
