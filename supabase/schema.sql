@@ -149,7 +149,7 @@ create policy "transactions_own" on public.transactions
 -- 旅伴之間要能比較「誰在什麼項目花多少」，所以分類全員固定，不開放自訂。
 -- 清單要和前端 src/utils/categories.ts 的 FIXED_CATEGORIES 一致。
 -- not valid：只檢查之後新增／修改的帳，舊資料不動（統計時不在清單內的會算到「其他」）。
--- 「機票」「住宿」算進總預算，但每日統計會排除（前端與 v_budget_summary.spend_days）。
+-- 「機票」「住宿」不算進預算與每日統計，只算進總花費（v_budget_summary.total_spent_*）。
 create or replace function public.fixed_categories()
 returns text[]
 language sql
@@ -394,6 +394,9 @@ group by w.id, w.user_id, w.name, w.kind, w.balance_currency,
          w.opening_balance, w.default_krw_per_twd, w.sort_order, w.is_active;
 
 -- ---------- 預算總覽：花多少、剩多少（兩種幣別各算一次） ----------
+-- 預算（spent_* / remaining_*）不含機票、住宿：預算是拿來管旅途中的日常花費。
+-- 總花費（total_spent_*）全部都算，含機票、住宿。
+-- （新欄位加在最後面：create or replace view 不能改既有欄位的順序）
 create or replace view public.v_budget_summary
 with (security_invoker = true) as
 select
@@ -409,13 +412,17 @@ select
   s.budget_krw - coalesce(x.spent_krw, 0) as remaining_krw,
   s.budget_twd - coalesce(x.spent_twd, 0) as remaining_twd,
   coalesce(x.entry_count, 0) as entry_count,
-  coalesce(x.spend_days, 0) as spend_days
+  coalesce(x.spend_days, 0) as spend_days,
+  coalesce(x.total_spent_krw, 0) as total_spent_krw,
+  coalesce(x.total_spent_twd, 0) as total_spent_twd
 from public.trip_settings s
 left join (
   select
     user_id,
-    sum(spend_sign * amount_krw) as spent_krw,
-    sum(spend_sign * amount_twd) as spent_twd,
+    sum(case when category not in ('機票', '住宿') then spend_sign * amount_krw else 0 end) as spent_krw,
+    sum(case when category not in ('機票', '住宿') then spend_sign * amount_twd else 0 end) as spent_twd,
+    sum(spend_sign * amount_krw) as total_spent_krw,
+    sum(spend_sign * amount_twd) as total_spent_twd,
     count(*) as entry_count,
     -- 機票、住宿不算「有花費的天數」（常常是出發前就付了）
     count(distinct case when category not in ('機票', '住宿') then (spent_at at time zone 'Asia/Seoul')::date end) as spend_days

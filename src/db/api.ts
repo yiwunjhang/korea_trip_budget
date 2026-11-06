@@ -95,6 +95,9 @@ export interface BudgetSummary {
   remaining_twd: number
   entry_count: number
   spend_days: number
+  /** 總花費（含機票、住宿）；spent_* 是預算用的，不含機票、住宿 */
+  total_spent_krw: number
+  total_spent_twd: number
 }
 
 export interface DailyTotal {
@@ -226,6 +229,8 @@ export async function getBudgetSummary(): Promise<BudgetSummary | null> {
     remaining_twd: num(row.remaining_twd),
     entry_count: num(row.entry_count),
     spend_days: num(row.spend_days),
+    total_spent_krw: num(row.total_spent_krw),
+    total_spent_twd: num(row.total_spent_twd),
   }
 }
 

@@ -182,6 +182,7 @@ async function logout() {
       <p class="rounded-xl bg-brand-50 px-3 py-2 text-xs text-ink-600">
         每一筆花費都會同時換算成韓元與台幣，兩個預算各自扣一次（看的是同一筆錢的兩種幣別）。
         習慣看哪一邊就設那一邊，另一邊填 0 就不顯示進度。
+        <b>預算不含機票、住宿</b>，只管旅途中的花費；機票、住宿會算進總花費。
       </p>
 
       <div class="flex items-center gap-3">
@@ -291,8 +292,10 @@ async function logout() {
         共 {{ ledger.summary.entry_count }} 筆、{{ ledger.summary.spend_days }} 天有花費
       </p>
       <p class="tabular">
-        韓元花費 {{ formatKRW(ledger.summary.spent_krw) }}；台幣花費
-        {{ formatTWD(ledger.summary.spent_twd) }}
+        總花費 {{ formatKRW(ledger.summary.total_spent_krw) }}（{{ formatTWD(ledger.summary.total_spent_twd) }}）
+      </p>
+      <p class="tabular text-xs text-ink-400">
+        其中算進預算的（不含機票、住宿）{{ formatKRW(ledger.summary.spent_krw) }}
       </p>
     </section>
 

@@ -21,22 +21,37 @@ onMounted(() => group.refresh())
 
 <template>
   <div class="space-y-5">
-    <!-- 預算：剩多少 -->
-    <section v-if="summary" class="grid grid-cols-2 gap-3">
-      <BudgetCard
-        label="韓元預算"
-        currency="KRW"
-        :budget="summary.budget_krw"
-        :spent="summary.spent_krw"
-        :remaining="summary.remaining_krw"
-      />
-      <BudgetCard
-        label="台幣預算"
-        currency="TWD"
-        :budget="summary.budget_twd"
-        :spent="summary.spent_twd"
-        :remaining="summary.remaining_twd"
-      />
+    <!-- 預算：剩多少（不含機票、住宿） -->
+    <section v-if="summary" class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <BudgetCard
+          label="韓元預算"
+          currency="KRW"
+          :budget="summary.budget_krw"
+          :spent="summary.spent_krw"
+          :remaining="summary.remaining_krw"
+        />
+        <BudgetCard
+          label="台幣預算"
+          currency="TWD"
+          :budget="summary.budget_twd"
+          :spent="summary.spent_twd"
+          :remaining="summary.remaining_twd"
+        />
+      </div>
+      <p class="px-1 text-xs text-ink-400">預算只算旅途中的花費，不含機票、住宿。</p>
+
+      <!-- 總花費：全部都算 -->
+      <div class="card flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-ink-600">總花費</p>
+          <p class="text-xs text-ink-400">含機票、住宿</p>
+        </div>
+        <div class="text-right">
+          <p class="tabular text-xl font-bold text-ink-900">{{ formatMoney(summary.total_spent_krw, 'KRW') }}</p>
+          <p class="tabular text-xs text-ink-600">{{ formatMoney(summary.total_spent_twd, 'TWD') }}</p>
+        </div>
+      </div>
     </section>
 
     <!-- 旅伴：每天各自花在哪 -->

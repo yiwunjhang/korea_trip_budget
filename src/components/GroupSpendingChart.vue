@@ -5,13 +5,15 @@ import { useGroupStore } from '../stores/group'
 import { useLedgerStore } from '../stores/ledger'
 import { useSessionStore } from '../stores/session'
 import { DAILY_CATEGORIES, isDailyCategory, NON_DAILY_CATEGORIES, normalizeCategory } from '../utils/categories'
+import { Check } from 'lucide-vue-next'
 import { formatMoney } from '../utils/money'
 import CategoryIcon from './CategoryIcon.vue'
 
 /**
- * 旅伴花費：每天一組，每人一條堆疊長條（分類分段），全部共用同一個比例尺，
- * 所以「誰花比較多、花在哪」可以直接比。點色塊看金額；也可以切成表格。
- * 沒加入群組時只畫自己的。
+ * 旅伴花費長條圖：依分類分組，每組裡每人一條（顏色代表成員），
+ * 分類由花最多排到最少，全部共用同一個比例尺。
+ * 可選全部天數或某一天、勾選要看的成員，也可以切成表格。
+ * 機票、住宿不進長條，另外列。沒加入群組時只畫自己的。
  */
 const group = useGroupStore()
 const ledger = useLedgerStore()
@@ -41,8 +43,8 @@ const rows = computed<GroupSpendingRow[]>(() => {
   return [...map.values()]
 })
 
-/** 成員順序：自己排第一，其他照加入順序 */
-const people = computed(() => {
+/** 所有成員：自己排第一，其他照加入順序 */
+const allPeople = computed(() => {
   if (!group.group) return [{ id: session.userId ?? 'me', name: '我' }]
   const list = group.members.map((m) => ({
     id: m.user_id,
@@ -51,8 +53,38 @@ const people = computed(() => {
   return list.sort((a, b) => Number(b.id === session.userId) - Number(a.id === session.userId))
 })
 
+/** 勾選要看的成員；空集合 = 全部人 */
+const selectedIds = ref<Set<string>>(new Set())
+const showAll = computed(() => selectedIds.value.size === 0)
+
+function toggleMember(id: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  // 全部勾滿就等於「全部」
+  selectedIds.value = next.size === allPeople.value.length ? new Set() : next
+}
+
+/** 成員離開群組後，把不存在的勾選清掉 */
+watch(allPeople, (list) => {
+  const ids = new Set(list.map((p) => p.id))
+  const kept = [...selectedIds.value].filter((id) => ids.has(id))
+  if (kept.length !== selectedIds.value.size) selectedIds.value = new Set(kept)
+})
+
+/** 目前要畫的成員 */
+const people = computed(() =>
+  showAll.value ? allPeople.value : allPeople.value.filter((p) => selectedIds.value.has(p.id)),
+)
+
+/** 只留勾選成員的資料（天數清單也跟著變） */
+const visibleRows = computed(() => {
+  const ids = new Set(people.value.map((p) => p.id))
+  return rows.value.filter((r) => ids.has(r.member_id))
+})
+
 /** 每日統計排除機票、住宿：常在出發前一次付清，算進某一天會失真 */
-const dailyRows = computed(() => rows.value.filter((r) => isDailyCategory(r.category)))
+const dailyRows = computed(() => visibleRows.value.filter((r) => isDailyCategory(r.category)))
 
 /** 機票、住宿另外列：每個人各花多少（不進每日長條） */
 const nonDaily = computed(() =>
@@ -82,76 +114,56 @@ watch(
   { immediate: true },
 )
 
-const shownDays = computed(() => (selectedDay.value === 'all' ? days.value : [selectedDay.value]))
-
 const amountOf = (r: GroupSpendingRow) => (currency.value === 'KRW' ? r.krw : r.twd)
 
-interface Bar {
-  personId: string
-  name: string
-  total: number
-  segments: { category: string; value: number; color: string }[]
+/**
+ * 成員顏色：依「全部成員」的順序固定配色（色盲安全的類別色），
+ * 篩選掉某人時，其他人的顏色不會跟著換。
+ */
+const PERSON_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948']
+function colorOf(personId: string): string {
+  const index = allPeople.value.findIndex((p) => p.id === personId)
+  return PERSON_COLORS[Math.max(0, index) % PERSON_COLORS.length]
 }
 
-function barsFor(dayFilter: (day: string) => boolean): Bar[] {
-  return people.value.map((p) => {
-    const mine = dailyRows.value.filter((r) => r.member_id === p.id && dayFilter(r.day))
-    const segments = DAILY_CATEGORIES.map((c) => ({
-      category: c.name,
-      color: c.color,
-      value: mine.filter((r) => r.category === c.name).reduce((s, r) => s + amountOf(r), 0),
-    })).filter((s) => s.value > 0)
-    return { personId: p.id, name: p.name, total: segments.reduce((s, x) => s + x.value, 0), segments }
+/** 目前範圍（全部天數或某一天）的資料 */
+const scopeRows = computed(() =>
+  dailyRows.value.filter((r) => selectedDay.value === 'all' || r.day === selectedDay.value),
+)
+
+/** 每位成員在這個範圍的合計（兼圖例） */
+const personTotals = computed(() =>
+  people.value.map((p) => ({
+    id: p.id,
+    name: p.name,
+    color: colorOf(p.id),
+    total: scopeRows.value.filter((r) => r.member_id === p.id).reduce((s, r) => s + amountOf(r), 0),
+  })),
+)
+
+/** 依分類：每個分類一組，組內每人一條；分類由花最多排到最少 */
+const categoryRows = computed(() =>
+  DAILY_CATEGORIES.map((c) => {
+    const values = people.value.map((p) => ({
+      id: p.id,
+      name: p.name,
+      color: colorOf(p.id),
+      value: scopeRows.value
+        .filter((r) => r.member_id === p.id && r.category === c.name)
+        .reduce((s, r) => s + amountOf(r), 0),
+    }))
+    return { category: c.name, values, total: values.reduce((s, v) => s + v.value, 0) }
   })
-}
-
-/** 每一天的長條；選「全部」時最上面多一組「合計」 */
-const groups = computed(() => {
-  const list = shownDays.value.map((day) => ({ key: day, label: dayLabel(day), bars: barsFor((d) => d === day) }))
-  if (selectedDay.value === 'all' && days.value.length > 1) {
-    list.unshift({ key: 'total', label: '全部合計（不含機票、住宿）', bars: barsFor(() => true) })
-  }
-  return list
-})
-
-/** 共用比例尺：每天的長條都用同一個最大值，才能跨天比較（合計另外算） */
-const dayMax = computed(() =>
-  Math.max(1, ...groups.value.filter((g) => g.key !== 'total').flatMap((g) => g.bars.map((b) => b.total))),
-)
-const totalMax = computed(() =>
-  Math.max(1, ...(groups.value.find((g) => g.key === 'total')?.bars.map((b) => b.total) ?? [1])),
+    .filter((row) => row.values.some((v) => v.value !== 0))
+    .sort((a, b) => b.total - a.total),
 )
 
-/** 點選的色塊（手機沒有 hover，用點的） */
-const picked = ref<{ group: string; personId: string; category: string } | null>(null)
-function pick(groupKey: string, personId: string, category: string) {
-  const same =
-    picked.value?.group === groupKey && picked.value.personId === personId && picked.value.category === category
-  picked.value = same ? null : { group: groupKey, personId, category }
-}
-function pickedLabel(groupKey: string, bars: Bar[]) {
-  const p = picked.value
-  if (!p || p.group !== groupKey) return ''
-  const bar = bars.find((b) => b.personId === p.personId)
-  const seg = bar?.segments.find((s) => s.category === p.category)
-  if (!bar || !seg) return ''
-  const share = bar.total > 0 ? Math.round((seg.value / bar.total) * 100) : 0
-  return `${bar.name}・${seg.category} ${formatMoney(seg.value, currency.value)}（${share}%）`
-}
+/** 共用比例尺：所有長條用同一個最大值，跨分類、跨人都能直接比 */
+const maxValue = computed(() =>
+  Math.max(1, ...categoryRows.value.flatMap((row) => row.values.map((v) => v.value))),
+)
 
-/** 表格：目前選的範圍，分類 × 人 */
-const table = computed(() => {
-  const inScope = (d: string) => selectedDay.value === 'all' || d === selectedDay.value
-  const bars = barsFor(inScope)
-  return {
-    people: bars.map((b) => ({ id: b.personId, name: b.name, total: b.total })),
-    rows: DAILY_CATEGORIES.map((c) => ({
-      category: c.name,
-      color: c.color,
-      values: bars.map((b) => b.segments.find((s) => s.category === c.name)?.value ?? 0),
-    })).filter((r) => r.values.some((v) => v !== 0)),
-  }
-})
+const barWidth = (value: number) => `${Math.max(0, (value / maxValue.value) * 100)}%`
 
 function dayLabel(day: string): string {
   const date = new Date(`${day}T12:00:00+09:00`)
@@ -185,7 +197,36 @@ function dayLabel(day: string): string {
       到「設定 → 旅伴群組」建立或加入群組，就能和旅伴一起看每天各自花在哪。
     </p>
 
+    <!-- 篩選：看哪些成員（可複選） -->
+    <div v-if="allPeople.length > 1" class="flex flex-wrap items-center gap-1.5">
+      <span class="text-xs text-ink-400">看誰</span>
+      <button
+        type="button"
+        class="chip text-xs"
+        :class="{ 'chip-on': showAll }"
+        :aria-pressed="showAll"
+        @click="selectedIds = new Set()"
+      >
+        全部人
+      </button>
+      <button
+        v-for="p in allPeople"
+        :key="p.id"
+        type="button"
+        class="chip text-xs"
+        :class="{ 'chip-on': !showAll && selectedIds.has(p.id) }"
+        :aria-pressed="!showAll && selectedIds.has(p.id)"
+        @click="toggleMember(p.id)"
+      >
+        <Check v-if="!showAll && selectedIds.has(p.id)" :size="12" :stroke-width="2.5" />
+        {{ p.name }}
+      </button>
+    </div>
+
     <p v-if="!rows.length" class="py-6 text-center text-sm text-ink-400">還沒有花費紀錄</p>
+    <p v-else-if="!visibleRows.length" class="py-6 text-center text-sm text-ink-400">
+      勾選的成員還沒有花費紀錄
+    </p>
 
     <template v-else>
       <!-- 機票、住宿：另外列，不算進每天 -->
@@ -242,56 +283,50 @@ function dayLabel(day: string): string {
         </button>
       </div>
 
-      <!-- 圖例：分類固定、顏色固定 -->
-      <ul class="flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-ink-600">
-        <li v-for="c in DAILY_CATEGORIES" :key="c.name" class="flex items-center gap-1">
-          <span class="h-2.5 w-2.5 rounded-sm" :style="{ background: c.color }" />
-          {{ c.name }}
+      <!-- 圖例兼合計：每人一個顏色 + 這個範圍花了多少 -->
+      <ul class="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+        <li v-for="p in personTotals" :key="p.id" class="flex items-center gap-1.5">
+          <span class="h-2.5 w-2.5 rounded-sm" :style="{ background: p.color }" />
+          <span class="text-ink-600">{{ p.name }}</span>
+          <b class="tabular text-ink-900">{{ formatMoney(p.total, currency) }}</b>
         </li>
       </ul>
+      <p class="-mt-2 text-xs text-ink-400">
+        {{ selectedDay === 'all' ? '全部天數' : dayLabel(selectedDay) }}・不含機票、住宿
+      </p>
 
-      <!-- 圖 -->
-      <div v-if="view === 'chart'" class="space-y-5">
-        <div v-for="g in groups" :key="g.key">
-          <h3 class="mb-2 text-xs font-semibold text-ink-800">{{ g.label }}</h3>
-          <ul class="space-y-2.5">
-            <li v-for="bar in g.bars" :key="bar.personId">
-              <div class="mb-1 flex items-baseline justify-between text-xs">
-                <span class="truncate text-ink-800">{{ bar.name }}</span>
-                <span class="tabular font-semibold text-ink-900">{{ formatMoney(bar.total, currency) }}</span>
-              </div>
-              <div class="h-4 w-full">
-                <div
-                  v-if="bar.total > 0"
-                  class="flex h-full gap-[2px] overflow-hidden rounded"
-                  :style="{ width: `${(bar.total / (g.key === 'total' ? totalMax : dayMax)) * 100}%` }"
-                >
-                  <button
-                    v-for="seg in bar.segments"
-                    :key="seg.category"
-                    type="button"
-                    class="h-full min-w-[3px] transition"
-                    :class="
-                      picked && picked.group === g.key && !(picked.personId === bar.personId && picked.category === seg.category)
-                        ? 'opacity-40'
-                        : ''
-                    "
-                    :style="{ flexGrow: seg.value, flexBasis: 0, background: seg.color }"
-                    :title="`${seg.category} ${formatMoney(seg.value, currency)}`"
-                    :aria-label="`${bar.name} ${seg.category} ${formatMoney(seg.value, currency)}`"
-                    @click="pick(g.key, bar.personId, seg.category)"
-                  />
-                </div>
-                <div v-else class="h-full w-full rounded bg-white/50" />
-              </div>
-            </li>
-          </ul>
-          <p class="tabular mt-1.5 min-h-4 text-xs text-ink-600">
-            <template v-if="pickedLabel(g.key, g.bars)">{{ pickedLabel(g.key, g.bars) }}</template>
-            <template v-else-if="g === groups[0]"><span class="text-ink-400">點色塊看金額</span></template>
-          </p>
-        </div>
-      </div>
+      <!-- 長條圖：依分類，每人一條 -->
+      <ul v-if="view === 'chart'" class="space-y-4">
+        <li v-for="row in categoryRows" :key="row.category">
+          <div class="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-800">
+            <CategoryIcon :name="row.category" :size="15" class="text-ink-600" />
+            {{ row.category }}
+            <span v-if="row.values.length > 1" class="tabular ml-auto font-normal text-ink-400">
+              合計 {{ formatMoney(row.total, currency) }}
+            </span>
+          </div>
+          <div
+            v-for="v in row.values"
+            :key="v.id"
+            class="flex items-center gap-2 py-[1px]"
+            :title="`${v.name}・${row.category} ${formatMoney(v.value, currency)}`"
+          >
+            <span v-if="row.values.length > 1" class="w-14 shrink-0 truncate text-xs text-ink-600">
+              {{ v.name.replace('（我）', '') }}
+            </span>
+            <div class="h-3 flex-1">
+              <div
+                v-if="v.value > 0"
+                class="h-full rounded-r transition-all"
+                :style="{ width: barWidth(v.value), background: v.color, minWidth: '3px' }"
+              />
+            </div>
+            <span class="tabular w-20 shrink-0 text-right text-xs" :class="v.value ? 'text-ink-900' : 'text-ink-400'">
+              {{ v.value ? formatMoney(v.value, currency) : '—' }}
+            </span>
+          </div>
+        </li>
+      </ul>
 
       <!-- 表格 -->
       <div v-else class="-mx-1 overflow-x-auto">
@@ -301,27 +336,29 @@ function dayLabel(day: string): string {
               <th class="px-1 py-1.5 text-left font-medium">
                 {{ selectedDay === 'all' ? '全部天數' : dayLabel(selectedDay) }}
               </th>
-              <th v-for="p in table.people" :key="p.id" class="px-1 py-1.5 text-right font-medium">
-                {{ p.name }}
+              <th v-for="p in personTotals" :key="p.id" class="px-1 py-1.5 text-right font-medium">
+                <span class="inline-flex items-center gap-1">
+                  <span class="h-2 w-2 rounded-sm" :style="{ background: p.color }" />
+                  {{ p.name }}
+                </span>
               </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-line">
-            <tr v-for="r in table.rows" :key="r.category">
+            <tr v-for="r in categoryRows" :key="r.category">
               <td class="px-1 py-1.5">
                 <span class="flex items-center gap-1.5 text-ink-800">
-                  <span class="h-2.5 w-2.5 shrink-0 rounded-sm" :style="{ background: r.color }" />
                   <CategoryIcon :name="r.category" :size="14" class="text-ink-600" />
                   {{ r.category }}
                 </span>
               </td>
-              <td v-for="(v, i) in r.values" :key="i" class="px-1 py-1.5 text-right text-ink-900">
-                {{ v ? formatMoney(v, currency) : '—' }}
+              <td v-for="v in r.values" :key="v.id" class="px-1 py-1.5 text-right text-ink-900">
+                {{ v.value ? formatMoney(v.value, currency) : '—' }}
               </td>
             </tr>
             <tr class="font-semibold text-ink-900">
               <td class="px-1 py-1.5">合計</td>
-              <td v-for="p in table.people" :key="p.id" class="px-1 py-1.5 text-right">
+              <td v-for="p in personTotals" :key="p.id" class="px-1 py-1.5 text-right">
                 {{ formatMoney(p.total, currency) }}
               </td>
             </tr>
