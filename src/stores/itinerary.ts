@@ -73,9 +73,14 @@ export const useItineraryStore = defineStore('itinerary', () => {
     }
     const cached = readCache()
     if (cached && cached.url === url.value && !data.value) data.value = cached.data
-    // 15 分鐘內抓過就不重抓（除非手動重新整理）
+    // 15 分鐘內抓過就不重抓（除非手動重新整理）。
+    // 但如果存的是舊版函式回的資料（沒有圖片欄位），就算剛抓過也要重抓：
+    // 先推前端、後部署函式時，手機會先存到一份沒有圖片的行程。
+    const isCurrentFormat = (data.value?.days ?? []).every((d) => Array.isArray(d.noteImages))
     const fresh =
-      data.value && Date.now() - new Date(data.value.fetchedAt).getTime() < 15 * 60 * 1000
+      data.value &&
+      isCurrentFormat &&
+      Date.now() - new Date(data.value.fetchedAt).getTime() < 15 * 60 * 1000
     if (fresh && !force) return
 
     loading.value = true
