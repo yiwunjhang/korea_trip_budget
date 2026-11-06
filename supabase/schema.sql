@@ -397,8 +397,10 @@ group by w.id, w.user_id, w.name, w.kind, w.balance_currency,
          w.opening_balance, w.default_krw_per_twd, w.sort_order, w.is_active;
 
 -- ---------- 預算總覽：花多少、剩多少（兩種幣別各算一次） ----------
--- 預算（spent_* / remaining_*）不含機票、住宿：預算是拿來管旅途中的日常花費。
--- 總花費（total_spent_*）全部都算，含機票、住宿。
+-- 預算（spent_* / remaining_*）不含機票、住宿，也不含信用卡（信用卡另外計算）：
+--   預算是拿來管旅途中用現金、悠遊付、儲值卡付的日常花費。
+-- 信用卡另計（card_spent_*）：信用卡刷的（同樣不含機票、住宿）。
+-- 總花費（total_spent_*）全部都算，含機票、住宿、信用卡。
 -- （新欄位加在最後面：create or replace view 不能改既有欄位的順序）
 create or replace view public.v_budget_summary
 with (security_invoker = true) as
@@ -417,21 +419,31 @@ select
   coalesce(x.entry_count, 0) as entry_count,
   coalesce(x.spend_days, 0) as spend_days,
   coalesce(x.total_spent_krw, 0) as total_spent_krw,
-  coalesce(x.total_spent_twd, 0) as total_spent_twd
+  coalesce(x.total_spent_twd, 0) as total_spent_twd,
+  coalesce(x.card_spent_krw, 0) as card_spent_krw,
+  coalesce(x.card_spent_twd, 0) as card_spent_twd
 from public.trip_settings s
 left join (
   select
-    user_id,
-    sum(case when category not in ('機票', '住宿') then spend_sign * amount_krw else 0 end) as spent_krw,
-    sum(case when category not in ('機票', '住宿') then spend_sign * amount_twd else 0 end) as spent_twd,
-    sum(spend_sign * amount_krw) as total_spent_krw,
-    sum(spend_sign * amount_twd) as total_spent_twd,
+    e.user_id,
+    sum(case when e.category not in ('機票', '住宿') and w.kind <> 'card'
+             then e.spend_sign * e.amount_krw else 0 end) as spent_krw,
+    sum(case when e.category not in ('機票', '住宿') and w.kind <> 'card'
+             then e.spend_sign * e.amount_twd else 0 end) as spent_twd,
+    sum(e.spend_sign * e.amount_krw) as total_spent_krw,
+    sum(e.spend_sign * e.amount_twd) as total_spent_twd,
+    sum(case when e.category not in ('機票', '住宿') and w.kind = 'card'
+             then e.spend_sign * e.amount_krw else 0 end) as card_spent_krw,
+    sum(case when e.category not in ('機票', '住宿') and w.kind = 'card'
+             then e.spend_sign * e.amount_twd else 0 end) as card_spent_twd,
     count(*) as entry_count,
     -- 機票、住宿不算「有花費的天數」（常常是出發前就付了）
-    count(distinct case when category not in ('機票', '住宿') then (spent_at at time zone 'Asia/Seoul')::date end) as spend_days
-  from public.v_transaction_effects
-  where spend_sign <> 0
-  group by user_id
+    count(distinct case when e.category not in ('機票', '住宿')
+                        then (e.spent_at at time zone 'Asia/Seoul')::date end) as spend_days
+  from public.v_transaction_effects e
+  join public.wallets w on w.id = e.wallet_id
+  where e.spend_sign <> 0
+  group by e.user_id
 ) x on x.user_id = s.user_id;
 
 -- ---------- 每日花費（用首爾時間切日） ----------

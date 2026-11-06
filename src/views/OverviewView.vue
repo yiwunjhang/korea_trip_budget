@@ -39,17 +39,29 @@ onMounted(() => group.refresh())
           :remaining="summary.remaining_twd"
         />
       </div>
-      <p class="px-1 text-xs text-ink-400">預算只算旅途中的花費，不含機票、住宿。</p>
+      <p class="px-1 text-xs text-ink-400">預算只算旅途中用現金、悠遊付、儲值卡付的花費，不含機票、住宿和信用卡。</p>
 
       <!-- 總花費：全部都算 -->
       <div class="card flex items-center justify-between">
         <div>
           <p class="text-xs font-medium text-ink-600">總花費</p>
-          <p class="text-xs text-ink-400">含機票、住宿</p>
+          <p class="text-xs text-ink-400">含機票、住宿、信用卡</p>
         </div>
         <div class="text-right">
           <p class="tabular text-xl font-bold text-ink-900">{{ formatMoney(summary.total_spent_krw, 'KRW') }}</p>
           <p class="tabular text-xs text-ink-600">{{ formatMoney(summary.total_spent_twd, 'TWD') }}</p>
+        </div>
+      </div>
+
+      <!-- 信用卡另計：不扣預算 -->
+      <div v-if="summary.card_spent_krw !== 0" class="card flex items-center justify-between py-3">
+        <div>
+          <p class="text-xs font-medium text-ink-600">信用卡另計</p>
+          <p class="text-xs text-ink-400">不扣預算（不含機票、住宿）</p>
+        </div>
+        <div class="text-right">
+          <p class="tabular text-base font-bold text-ink-900">{{ formatMoney(summary.card_spent_krw, 'KRW') }}</p>
+          <p class="tabular text-xs text-ink-600">{{ formatMoney(summary.card_spent_twd, 'TWD') }}</p>
         </div>
       </div>
     </section>

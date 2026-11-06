@@ -211,7 +211,7 @@ async function logout() {
       <p class="rounded-xl bg-brand-50 px-3 py-2 text-xs text-ink-600">
         每一筆花費都會同時換算成韓元與台幣，兩個預算各自扣一次（看的是同一筆錢的兩種幣別）。
         習慣看哪一邊就設那一邊，另一邊填 0 就不顯示進度。
-        <b>預算不含機票、住宿</b>，只管旅途中的花費；機票、住宿會算進總花費。
+        <b>預算不含機票、住宿和信用卡</b>，只管旅途中用現金、悠遊付、儲值卡付的花費；這些都會算進總花費，信用卡在總覽另外列出。
       </p>
 
       <div class="flex items-center gap-3">
@@ -324,7 +324,7 @@ async function logout() {
         總花費 {{ formatKRW(ledger.summary.total_spent_krw) }}（{{ formatTWD(ledger.summary.total_spent_twd) }}）
       </p>
       <p class="tabular text-xs text-ink-400">
-        其中算進預算的（不含機票、住宿）{{ formatKRW(ledger.summary.spent_krw) }}
+        其中算進預算的（不含機票、住宿、信用卡）{{ formatKRW(ledger.summary.spent_krw) }}
       </p>
     </section>
 
