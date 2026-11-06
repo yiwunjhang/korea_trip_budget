@@ -16,6 +16,7 @@ import { useLedgerStore } from '../stores/ledger'
 import { isDailyCategory } from '../utils/categories'
 import { dateParts, dayLabel, guessCategory, shortStopTitle } from '../utils/itinerary'
 import { formatMoney } from '../utils/money'
+import ImageStrip from '../components/ImageStrip.vue'
 
 /**
  * 行程頁：上方一排天數（Day N／日期／地點，今天有標記），
@@ -221,7 +222,10 @@ const updatedAt = computed(() => {
           </section>
 
           <!-- 當天備註（例如航班表） -->
-          <section v-if="day.notes.length || day.noteLinks.length" class="card space-y-1 text-xs text-ink-600">
+          <section
+            v-if="day.notes.length || day.noteLinks.length || day.noteImages?.length"
+            class="card space-y-1 text-xs text-ink-600"
+          >
             <p v-for="(line, i) in day.notes" :key="i">{{ line }}</p>
             <div v-if="day.noteLinks.length" class="flex flex-wrap gap-1.5 pt-1">
               <a
@@ -235,6 +239,7 @@ const updatedAt = computed(() => {
                 {{ l.label }} <ExternalLink :size="11" />
               </a>
             </div>
+            <ImageStrip v-if="day.noteImages?.length" :images="day.noteImages" :alt="day.place" class="pt-1.5" />
           </section>
 
           <!-- 各站：時間軸 -->
@@ -251,6 +256,8 @@ const updatedAt = computed(() => {
 
               <div class="card space-y-2 py-3">
                 <p class="text-sm leading-snug font-semibold text-ink-900">{{ stop.title }}</p>
+
+                <ImageStrip v-if="stop.images?.length" :images="stop.images" :alt="stop.title" />
 
                 <div v-if="stop.lines.length" class="space-y-0.5 text-xs leading-relaxed text-ink-600">
                   <p v-for="(line, j) in expanded.has(stopKey(i)) ? stop.lines : stop.lines.slice(0, 3)" :key="j">

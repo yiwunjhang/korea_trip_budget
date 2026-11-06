@@ -19,6 +19,17 @@ export interface ItineraryLink {
   url: string
 }
 
+/** 行程裡的圖片（Notion 公開頁面的圖片網址，可加 &width= 調大小） */
+export interface ItineraryImage {
+  /** 縮圖（寬 600） */
+  thumb: string
+  /** 原圖（寬 1600） */
+  full: string
+  caption: string
+  /** 寬 / 高，沒有就 null */
+  ratio: number | null
+}
+
 export interface ItineraryStop {
   title: string
   /** 1️⃣ 這類編號；「住宿」「交通」這種小標就是 null */
@@ -26,6 +37,7 @@ export interface ItineraryStop {
   lines: string[]
   mapUrl: string | null
   links: ItineraryLink[]
+  images: ItineraryImage[]
 }
 
 export interface ItineraryDay {
@@ -39,6 +51,7 @@ export interface ItineraryDay {
   date: string | null
   notes: string[]
   noteLinks: ItineraryLink[]
+  noteImages: ItineraryImage[]
   stops: ItineraryStop[]
   notionUrl: string
 }
@@ -164,14 +177,34 @@ function stopTitle(text: string): { num: number | null; title: string } {
   return { num: null, title: t }
 }
 
+/**
+ * Notion 圖片區塊 → 可以直接放進 <img> 的網址。
+ * 上傳的圖片（attachment:…）要經過公開網站的 /image/ 轉址才拿得到，
+ * 這個網址不會過期（每次會轉到新的簽章網址），也不擋別的網站嵌入。
+ */
+function toImage(b: Any, origin: string): ItineraryImage | null {
+  const src: string | undefined = b.format?.display_source ?? b.properties?.source?.[0]?.[0]
+  if (!src) return null
+  const base = `${origin}/image/${encodeURIComponent(src)}?table=block&id=${b.id}&spaceId=${b.space_id}&cache=v2`
+  const width = Number(b.format?.block_width)
+  const height = Number(b.format?.block_height)
+  const ratio = width > 0 && height > 0 ? width / height : null
+  return {
+    thumb: `${base}&width=600`,
+    full: `${base}&width=1600`,
+    caption: richText(b.properties?.caption).text.trim(),
+    ratio,
+  }
+}
+
 const STOP_TYPES = new Set(['quote', 'header', 'sub_header', 'sub_sub_header'])
 const TEXT_TYPES = new Set(['text', 'callout', 'bulleted_list', 'numbered_list', 'to_do', 'toggle'])
 const CONTAINER_TYPES = new Set(['column_list', 'column', 'callout', 'toggle', 'bulleted_list', 'numbered_list'])
 
 /** 一天的頁面 → 一站一站 */
-export function parseDayPage(rootId: string, blocks: Record<string, Any>) {
+export function parseDayPage(rootId: string, blocks: Record<string, Any>, origin: string) {
   const stops: ItineraryStop[] = []
-  const notes = { lines: [] as string[], links: [] as string[] }
+  const notes = { lines: [] as string[], links: [] as string[], images: [] as ItineraryImage[] }
   let current: ItineraryStop | null = null
 
   const addTo = (lines: string[], links: string[]) => {
@@ -200,7 +233,7 @@ export function parseDayPage(rootId: string, blocks: Record<string, Any>) {
       const [first, ...rest] = text.split('\n')
       const { num, title } = stopTitle(first ?? '')
       for (const url of title.match(URL_RE) ?? []) links.push(url)
-      current = { title: title.replace(URL_RE, '').trim() || '（未命名）', num, lines, mapUrl: null, links: [] }
+      current = { title: title.replace(URL_RE, '').trim() || '（未命名）', num, lines, mapUrl: null, links: [], images: [] }
       stops.push(current)
       addTo(splitLines(rest.join('\n'), links), links)
     } else if (type === 'table') {
@@ -215,6 +248,10 @@ export function parseDayPage(rootId: string, blocks: Record<string, Any>) {
         head ? cells.map((c, i) => (head[i] ? `${head[i]}：${c}` : c)).join('　') : cells.join('　'),
       )
       addTo(lines, [])
+      return
+    } else if (type === 'image') {
+      const image = toImage(b, origin)
+      if (image) (current ? current.images : notes.images).push(image)
       return
     } else if (type === 'bookmark') {
       const link = richText(b.properties?.link).text
@@ -233,7 +270,7 @@ export function parseDayPage(rootId: string, blocks: Record<string, Any>) {
 
   for (const stop of stops) stop.lines = [...new Set(stop.lines)]
   const noteLinks = [...new Set(notes.links)].map((url) => ({ label: linkLabel(url), url }))
-  return { stops, notes: [...new Set(notes.lines)], noteLinks }
+  return { stops, notes: [...new Set(notes.lines)], noteLinks, noteImages: notes.images }
 }
 
 /** 「明洞｜Day2（日）」→ 地點「明洞」、Day 2 */
@@ -284,7 +321,7 @@ export async function buildItinerary(rawUrl: string): Promise<Itinerary> {
       const title = richText(props.title).text.trim()
       const dateValue = dateProp ? props[dateProp]?.[0]?.[1]?.find((a: Any) => a?.[0] === 'd')?.[1] : null
       const page = await loadPage(post, id)
-      const parsed = parseDayPage(id, page.blocks)
+      const parsed = parseDayPage(id, page.blocks, origin)
       return {
         id,
         title,

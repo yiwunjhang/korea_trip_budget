@@ -480,6 +480,16 @@ export interface ItineraryLink {
   url: string
 }
 
+export interface ItineraryImage {
+  /** 縮圖（寬 600） */
+  thumb: string
+  /** 原圖（寬 1600） */
+  full: string
+  caption: string
+  /** 寬 / 高，沒有就 null */
+  ratio: number | null
+}
+
 export interface ItineraryStop {
   title: string
   /** 1️⃣ 這類編號；「住宿」「交通」這種小標是 null */
@@ -487,6 +497,8 @@ export interface ItineraryStop {
   lines: string[]
   mapUrl: string | null
   links: ItineraryLink[]
+  /** 舊版快取沒有這個欄位，用的時候記得 ?? [] */
+  images?: ItineraryImage[]
 }
 
 export interface ItineraryDay {
@@ -498,6 +510,7 @@ export interface ItineraryDay {
   date: string | null
   notes: string[]
   noteLinks: ItineraryLink[]
+  noteImages?: ItineraryImage[]
   stops: ItineraryStop[]
   notionUrl: string
 }

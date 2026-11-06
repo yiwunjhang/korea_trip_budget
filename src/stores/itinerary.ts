@@ -8,7 +8,8 @@ import { useLedgerStore } from './ledger'
  * Notion 行程。讀過一次就存在這支手機（localStorage），
  * 在韓國網路不穩、地鐵裡沒訊號時也看得到；有網路時再背景更新。
  */
-const CACHE_KEY = 'korea-trip:itinerary'
+// 資料格式有變（例如加了圖片）就換版本號，舊的快取自動作廢
+const CACHE_KEY = 'korea-trip:itinerary:v2'
 
 function readCache(): { url: string; data: Itinerary } | null {
   try {

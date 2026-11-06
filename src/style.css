@@ -100,6 +100,30 @@ body {
   background: var(--color-brand-400);
 }
 
+/*
+ * 成功圖示（打勾）的動畫，是用「跟彈窗背景同色（預設純白）」的色塊遮住圓圈的一部分。
+ * 我們的彈窗是半透明米白，白色色塊會變成勾勾後面一團白，所以把遮罩改成透明。
+ */
+.swal2-popup.swal-glass {
+  --swal2-background: transparent;
+}
+
+.swal-glass .swal2-success-circular-line-left,
+.swal-glass .swal2-success-circular-line-right,
+.swal-glass .swal2-success-fix {
+  background: transparent !important;
+}
+
+/* 按鈕焦點：瀏覽器預設是粗黑框，改成銀杏金外框，而且只在用鍵盤時出現 */
+.swal-glass button:focus {
+  outline: none;
+}
+
+.swal-glass button:focus-visible {
+  outline: 2px solid var(--color-brand-400);
+  outline-offset: 2px;
+}
+
 /* 金額一律等寬，不會因為位數不同跳動 */
 .tabular {
   font-variant-numeric: tabular-nums;
