@@ -28,6 +28,9 @@ create table if not exists public.trip_settings (
   updated_at timestamptz not null default now()
 );
 
+-- Notion 行程的公開連結（notion.site），由 Edge Function notion-itinerary 讀取
+alter table public.trip_settings add column if not exists itinerary_url text not null default '';
+
 alter table public.trip_settings enable row level security;
 
 drop policy if exists "trip_settings_own" on public.trip_settings;

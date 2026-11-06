@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Leaf } from 'lucide-vue-next'
+import { Leaf, Settings } from 'lucide-vue-next'
 import AppNav from './components/AppNav.vue'
 import GinkgoBackdrop from './components/GinkgoBackdrop.vue'
 import { useSessionStore } from './stores/session'
 import { useLedgerStore } from './stores/ledger'
+import { useItineraryStore } from './stores/itinerary'
 import { supabaseConfigured } from './supabase'
 
 const route = useRoute()
@@ -20,6 +21,8 @@ async function load() {
   if (!session.signedIn()) return
   await ledger.refresh()
   await ledger.ensureSeeded()
+  // 行程在背景載入（先用手機裡的快取），不擋記帳畫面
+  useItineraryStore().load()
 }
 
 onMounted(load)
@@ -39,7 +42,17 @@ watch(() => session.userId, load)
           <Leaf :size="18" :stroke-width="2" class="text-brand-500" aria-hidden="true" />
           {{ title }}
         </h1>
-        <span v-if="ledger.loading" class="text-xs text-ink-400">同步中…</span>
+        <div class="flex items-center gap-2">
+          <span v-if="ledger.loading" class="text-xs text-ink-400">同步中…</span>
+          <router-link
+            :to="{ name: 'settings' }"
+            class="rounded-full p-1.5 text-ink-600 transition hover:bg-white/60"
+            active-class="bg-white/70 text-brand-600"
+            aria-label="設定"
+          >
+            <Settings :size="19" />
+          </router-link>
+        </div>
       </div>
     </header>
 

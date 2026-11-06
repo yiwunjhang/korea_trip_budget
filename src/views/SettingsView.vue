@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { Copy, LogOut, Users } from 'lucide-vue-next'
 import { useGroupStore } from '../stores/group'
 import { useLedgerStore } from '../stores/ledger'
+import { useItineraryStore } from '../stores/itinerary'
 import { useSessionStore } from '../stores/session'
 import { formatKRW, formatTWD, krwToTwd } from '../utils/money'
 import { alertError, alertSaved, confirmDelete, toastSaved } from '../utils/alert'
@@ -13,6 +14,7 @@ import { FIXED_CATEGORIES } from '../utils/categories'
 const ledger = useLedgerStore()
 const session = useSessionStore()
 const group = useGroupStore()
+const itinerary = useItineraryStore()
 const router = useRouter()
 
 /* ---------- 旅伴群組 ---------- */
@@ -77,6 +79,7 @@ const form = reactive({
   budget_krw: 0,
   budget_twd: 0,
   krw_per_twd: 43,
+  itinerary_url: '',
 })
 
 /** 設定載入後填進表單 */
@@ -90,6 +93,7 @@ watch(
     form.budget_krw = s.budget_krw
     form.budget_twd = s.budget_twd
     form.krw_per_twd = s.krw_per_twd
+    form.itinerary_url = s.itinerary_url
   },
   { immediate: true },
 )
@@ -102,8 +106,12 @@ async function save() {
     budget_krw: form.budget_krw || 0,
     budget_twd: form.budget_twd || 0,
     krw_per_twd: form.krw_per_twd > 0 ? form.krw_per_twd : 43,
+    itinerary_url: form.itinerary_url.trim(),
   })
-  if (ok) alertSaved('設定已儲存')
+  if (ok) {
+    alertSaved('設定已儲存')
+    itinerary.load(true)
+  }
   else alertError(ledger.error || '請稍後再試')
 }
 
@@ -134,6 +142,27 @@ async function logout() {
           <label class="label" for="s-end">回程日</label>
           <input id="s-end" v-model="form.end_date" class="field" type="date" />
         </div>
+      </div>
+
+      <div>
+        <label class="label" for="s-itinerary">Notion 行程連結</label>
+        <input
+          id="s-itinerary"
+          v-model="form.itinerary_url"
+          class="field text-sm"
+          type="url"
+          inputmode="url"
+          placeholder="https://xxx.notion.site/…"
+        />
+        <p class="mt-1 text-xs text-ink-400">
+          Notion 行程資料庫 → Share → Publish（發佈到網路）→ 複製連結貼上。旅伴也要在自己的設定貼一次。
+          <template v-if="itinerary.error && form.itinerary_url">
+            <br /><span class="text-flame-600">讀取失敗：{{ itinerary.error }}</span>
+          </template>
+          <template v-else-if="itinerary.days.length">
+            <br /><span class="text-mint-600">已讀到 {{ itinerary.days.length }} 天的行程</span>
+          </template>
+        </p>
       </div>
 
       <div>

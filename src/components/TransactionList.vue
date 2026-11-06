@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Transaction } from '../db/api'
 import { Trash2 } from 'lucide-vue-next'
 import { useLedgerStore } from '../stores/ledger'
 import CategoryIcon from './CategoryIcon.vue'
+import TransactionEditSheet from './TransactionEditSheet.vue'
 import { alertError, confirmDelete, toastSaved } from '../utils/alert'
 import { formatKRW, formatSeoulDate, formatSeoulDateTime, formatTWD } from '../utils/money'
 
 const props = defineProps<{ items: Transaction[]; emptyText?: string }>()
 
 const ledger = useLedgerStore()
+
+/** 正在修改的那筆（點一筆就打開編輯面板） */
+const editing = ref<Transaction | null>(null)
 
 /** 以首爾日期分組，每組顯示當日花費小計（加值不計入） */
 const groups = computed(() => {
@@ -65,7 +69,16 @@ async function remove(tx: Transaction) {
       </div>
 
       <ul class="glass divide-y divide-line overflow-hidden">
-        <li v-for="tx in group.list" :key="tx.id" class="flex items-center gap-3 px-4 py-3">
+        <li
+          v-for="tx in group.list"
+          :key="tx.id"
+          class="flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-white/40 active:bg-white/60"
+          role="button"
+          tabindex="0"
+          :aria-label="`修改 ${tx.title || kindLabel(tx)}`"
+          @click="editing = tx"
+          @keydown.enter="editing = tx"
+        >
           <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
             <CategoryIcon :name="tx.kind === 'topup' ? '加值換匯' : tx.category" :size="18" />
           </span>
@@ -101,12 +114,16 @@ async function remove(tx: Transaction) {
             type="button"
             class="shrink-0 p-1 text-ink-400 transition hover:text-flame-600"
             aria-label="刪除"
-            @click="remove(tx)"
+            @click.stop="remove(tx)"
+            @keydown.enter.stop
           >
             <Trash2 :size="16" :stroke-width="1.75" />
           </button>
         </li>
       </ul>
     </section>
+    <p class="text-center text-xs text-ink-400">點一筆可以修改</p>
   </div>
+
+  <TransactionEditSheet :tx="editing" @close="editing = null" />
 </template>

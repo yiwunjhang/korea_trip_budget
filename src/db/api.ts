@@ -23,6 +23,8 @@ export interface TripSettings {
   budget_twd: number
   /** 1 台幣 = ? 韓元 */
   krw_per_twd: number
+  /** Notion 行程的公開連結（notion.site），空字串 = 沒設定 */
+  itinerary_url: string
 }
 
 export interface Wallet {
@@ -198,6 +200,7 @@ export async function getTripSettings(): Promise<TripSettings | null> {
     budget_krw: num(row.budget_krw),
     budget_twd: num(row.budget_twd),
     krw_per_twd: num(row.krw_per_twd),
+    itinerary_url: String(row.itinerary_url ?? ''),
   }
 }
 
@@ -465,4 +468,61 @@ export async function listCategoryTotals(): Promise<CategoryTotal[]> {
     twd: num(row.twd),
     entry_count: num(row.entry_count),
   }))
+}
+
+/* ------------------------------------------------------------------ */
+/* Notion 行程（透過 Supabase Edge Function notion-itinerary 讀取）     */
+/* 型別要和 supabase/functions/notion-itinerary/index.ts 一致            */
+/* ------------------------------------------------------------------ */
+
+export interface ItineraryLink {
+  label: string
+  url: string
+}
+
+export interface ItineraryStop {
+  title: string
+  /** 1️⃣ 這類編號；「住宿」「交通」這種小標是 null */
+  num: number | null
+  lines: string[]
+  mapUrl: string | null
+  links: ItineraryLink[]
+}
+
+export interface ItineraryDay {
+  id: string
+  title: string
+  place: string
+  dayNo: number | null
+  /** yyyy-mm-dd */
+  date: string | null
+  notes: string[]
+  noteLinks: ItineraryLink[]
+  stops: ItineraryStop[]
+  notionUrl: string
+}
+
+export interface Itinerary {
+  days: ItineraryDay[]
+  fetchedAt: string
+}
+
+export async function fetchItinerary(url: string): Promise<Itinerary> {
+  const { data, error } = await supabase.functions.invoke('notion-itinerary', { body: { url } })
+  if (error) {
+    // Edge Function 回 4xx 時，錯誤內容在 response body 裡
+    let message = error.message
+    try {
+      const body = await (error as { context?: Response }).context?.json()
+      if (body?.error) message = body.error
+    } catch {
+      /* 讀不到 body 就用原本的訊息 */
+    }
+    if (/Failed to send|not found|404/i.test(message)) {
+      message = '還沒部署 notion-itinerary 函式（見 README「Notion 行程」）'
+    }
+    throw new Error(message)
+  }
+  if (data?.error) throw new Error(data.error)
+  return data as Itinerary
 }

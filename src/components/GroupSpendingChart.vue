@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import type { Currency, GroupSpendingRow } from '../db/api'
 import { useGroupStore } from '../stores/group'
+import { useItineraryStore } from '../stores/itinerary'
 import { useLedgerStore } from '../stores/ledger'
 import { useSessionStore } from '../stores/session'
 import { DAILY_CATEGORIES, isDailyCategory, NON_DAILY_CATEGORIES, normalizeCategory } from '../utils/categories'
@@ -165,6 +166,21 @@ const maxValue = computed(() =>
 
 const barWidth = (value: number) => `${Math.max(0, (value / maxValue.value) * 100)}%`
 
+const itinerary = useItineraryStore()
+
+/** 天數按鈕：有 Notion 行程就顯示「Day 2 明洞」，沒有就「第 N 天 11/8」 */
+function dayChipLabel(day: string, index: number): string {
+  const trip = itinerary.dayByDate(day)
+  if (trip) return `Day ${trip.dayNo ?? index + 1} ${trip.place}`
+  return `第${index + 1}天 ${dayLabel(day).split('（')[0]}`
+}
+
+/** 範圍說明：「Day 2 明洞・11/8（日）」 */
+function scopeLabel(day: string): string {
+  const trip = itinerary.dayByDate(day)
+  return trip ? `Day ${trip.dayNo ?? ''} ${trip.place}・${dayLabel(day)}` : dayLabel(day)
+}
+
 function dayLabel(day: string): string {
   const date = new Date(`${day}T12:00:00+09:00`)
   const md = `${date.getUTCMonth() + 1}/${date.getUTCDate()}`
@@ -197,6 +213,20 @@ function dayLabel(day: string): string {
       到「設定 → 旅伴群組」建立或加入群組，就能和旅伴一起看每天各自花在哪。
     </p>
 
+    <!-- 讀取旅伴資料失敗（最常見：Supabase 還沒重跑最新的 schema.sql） -->
+    <div v-if="group.error" class="rounded-xl border border-flame-100 bg-flame-50/80 px-3 py-2 text-xs text-flame-600">
+      讀取大家的花費失敗：{{ group.error }}<br />
+      <span class="text-ink-600">請到 Supabase → SQL Editor 重新執行一次 supabase/schema.sql，再按「重新整理」。</span>
+      <button
+        type="button"
+        class="mt-1.5 block font-medium text-brand-600"
+        :disabled="group.loading"
+        @click="group.refresh()"
+      >
+        {{ group.loading ? '更新中…' : '重新整理 ›' }}
+      </button>
+    </div>
+
     <!-- 篩選：看哪些成員（可複選） -->
     <div v-if="allPeople.length > 1" class="flex flex-wrap items-center gap-1.5">
       <span class="text-xs text-ink-400">看誰</span>
@@ -223,7 +253,8 @@ function dayLabel(day: string): string {
       </button>
     </div>
 
-    <p v-if="!rows.length" class="py-6 text-center text-sm text-ink-400">還沒有花費紀錄</p>
+    <p v-if="!rows.length && !group.error" class="py-6 text-center text-sm text-ink-400">還沒有花費紀錄</p>
+    <template v-else-if="!rows.length" />
     <p v-else-if="!visibleRows.length" class="py-6 text-center text-sm text-ink-400">
       勾選的成員還沒有花費紀錄
     </p>
@@ -279,7 +310,7 @@ function dayLabel(day: string): string {
           :class="{ 'chip-on': selectedDay === d }"
           @click="selectedDay = d"
         >
-          第{{ i + 1 }}天 {{ dayLabel(d).split('（')[0] }}
+          {{ dayChipLabel(d, i) }}
         </button>
       </div>
 
@@ -292,7 +323,7 @@ function dayLabel(day: string): string {
         </li>
       </ul>
       <p class="-mt-2 text-xs text-ink-400">
-        {{ selectedDay === 'all' ? '全部天數' : dayLabel(selectedDay) }}・不含機票、住宿
+        {{ selectedDay === 'all' ? '全部天數' : scopeLabel(selectedDay) }}・不含機票、住宿
       </p>
 
       <!-- 長條圖：依分類，每人一條 -->
@@ -334,7 +365,7 @@ function dayLabel(day: string): string {
           <thead>
             <tr class="text-ink-600">
               <th class="px-1 py-1.5 text-left font-medium">
-                {{ selectedDay === 'all' ? '全部天數' : dayLabel(selectedDay) }}
+                {{ selectedDay === 'all' ? '全部天數' : scopeLabel(selectedDay) }}
               </th>
               <th v-for="p in personTotals" :key="p.id" class="px-1 py-1.5 text-right font-medium">
                 <span class="inline-flex items-center gap-1">

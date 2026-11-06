@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { ChartPie, PenLine, ReceiptText, Settings, Wallet } from 'lucide-vue-next'
+import { ChartPie, Map as MapIcon, PenLine, ReceiptText, Wallet } from 'lucide-vue-next'
 
-// 底部導覽：旅行中單手操作，所以放在拇指可及的位置。記帳放第一個。
+// 底部導覽：旅行中單手操作，放在拇指可及的位置。記帳、行程相鄰，一點就切換；設定在右上角齒輪。
 const tabs = [
   { name: 'home', label: '記帳', icon: PenLine },
+  { name: 'itinerary', label: '行程', icon: MapIcon },
   { name: 'overview', label: '總覽', icon: ChartPie },
   { name: 'records', label: '明細', icon: ReceiptText },
   { name: 'wallets', label: '錢包', icon: Wallet },
-  { name: 'settings', label: '設定', icon: Settings },
 ] as const
 </script>
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import EntryForm from '../components/EntryForm.vue'
+import TodayStops from '../components/TodayStops.vue'
 import TransactionList from '../components/TransactionList.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney, formatSeoulDate } from '../utils/money'
@@ -53,6 +54,9 @@ const recent = computed(() => ledger.transactions.slice(0, 5))
       </span>
       <span v-else class="text-ink-400">看總覽 ›</span>
     </router-link>
+
+    <!-- 今天的行程：點一站就帶入品項 -->
+    <TodayStops />
 
     <EntryForm />
 

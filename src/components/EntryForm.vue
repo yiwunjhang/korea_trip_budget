@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import type { Currency, TxKind } from '../db/api'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney, krwToTwd, seoulInputToISO, toSeoulInputValue, twdToKrw } from '../utils/money'
@@ -31,6 +32,29 @@ const spentAt = ref(toSeoulInputValue(new Date()))
 const showMore = ref(false)
 const saving = ref(false)
 const amountInput = ref<HTMLInputElement | null>(null)
+const route = useRoute()
+const router = useRouter()
+
+/**
+ * 從行程「記一筆」過來：網址帶 ?title=無垢屋&category=餐飲，
+ * 帶入品項與分類後把網址清乾淨，並把游標放到金額。
+ */
+watch(
+  () => route.query,
+  async (q) => {
+    if (typeof q.title !== 'string' || !q.title) return
+    title.value = q.title
+    if (typeof q.category === 'string' && FIXED_CATEGORIES.some((c) => c.name === q.category)) {
+      category.value = q.category
+    }
+    kind.value = 'expense'
+    await router.replace({ query: {} })
+    await nextTick()
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    amountInput.value?.focus()
+  },
+  { immediate: true },
+)
 
 const wallet = computed(() => (walletId.value === null ? undefined : ledger.walletById(walletId.value)))
 
@@ -220,8 +244,9 @@ async function submit() {
           aria-label="金額"
         />
       </label>
-      <p class="tabular mt-1 h-5 text-sm text-ink-600">
+      <p class="tabular mt-1 min-h-5 truncate text-sm text-ink-600">
         <template v-if="numericAmount > 0">{{ convertedLabel }}</template>
+        <template v-if="title"><span v-if="numericAmount > 0"> ・ </span>品項：<b class="text-ink-900">{{ title }}</b></template>
       </p>
     </section>
 

@@ -12,6 +12,12 @@ const router = createRouter({
       meta: { requiresUser: true },
     },
     {
+      path: '/itinerary',
+      name: 'itinerary',
+      component: () => import('../views/ItineraryView.vue'),
+      meta: { requiresUser: true },
+    },
+    {
       path: '/overview',
       name: 'overview',
       component: () => import('../views/OverviewView.vue'),

@@ -61,10 +61,33 @@ npm run dev
 
 ## 畫面
 
-- **總覽**：韓元／台幣預算剩多少、今天花多少、各錢包餘額、記一筆、最近紀錄。
-- **明細**：分類統計 + 可依錢包／分類篩選的完整清單。
-- **錢包**：餘額、期初金額、專屬匯率、停用／刪除、新增錢包。
-- **設定**：旅行名稱與日期、預算、預設匯率、分類管理、登出。
+底部導覽：**記帳｜行程｜總覽｜明細｜錢包**，設定在右上角齒輪。
+
+- **記帳**（首頁）：今天的行程（點一站就帶入品項）、金額、付款方式（悠遊付顯示回饋額度）、分類、最近紀錄。
+- **行程**：Notion 行程，上方切換天數（今天有標記），可左右滑；每站可開地圖、直接記一筆。
+- **總覽**：預算（不含機票、住宿）、總花費、旅伴每天各分類花費長條圖、悠遊付回饋、錢包餘額。
+- **明細**：分類統計 + 可篩選的完整清單，點一筆可修改。
+- **錢包**：現金類餘額、悠遊付／信用卡已刷、恢復預設錢包。
+- **設定**：旅行與預算、Notion 行程連結、旅伴群組、登出。
+
+## Notion 行程
+
+Notion 不允許網頁直接讀它的資料，所以由 Supabase Edge Function `notion-itinerary`
+代讀公開發佈的 Notion 頁面（不需要 Notion 金鑰）。
+
+1. Notion 行程資料庫 → **Share → Publish**（發佈到網路），複製 `notion.site` 連結。
+   資料庫每一列是一天（標題像「明洞｜Day2（日）」、要有日期欄位）；
+   每天頁面裡的引用區塊（`> 1️⃣ 換匯`）是一站，後面的文字／callout 是這站的說明。
+2. 部署函式（二選一）：
+   - **Dashboard**：Supabase → Edge Functions → Deploy a new function → Via Editor，
+     名稱填 `notion-itinerary`，貼上 `supabase/functions/notion-itinerary/index.ts` 整份 → Deploy。
+     保持 *Enforce JWT verification* 開啟（只有登入的人能呼叫）。
+   - **CLI**：`npx supabase functions deploy notion-itinerary --project-ref <你的 project ref>`
+3. SQL Editor 重跑 `supabase/schema.sql`（新增 `trip_settings.itinerary_url` 欄位）。
+4. App → 設定 → 貼上 Notion 連結 → 儲存設定。旅伴也要在自己的設定貼一次。
+
+行程讀過一次會存在手機裡，沒網路也看得到；有網路時每 15 分鐘最多更新一次，
+行程頁底部也可以手動「從 Notion 更新」。
 
 ## 部署（GitHub Pages）
 
