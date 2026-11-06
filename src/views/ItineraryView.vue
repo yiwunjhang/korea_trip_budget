@@ -113,6 +113,8 @@ function record(stop: ItineraryStop) {
   const query: Record<string, string> = { title: shortStopTitle(stop.title) }
   const category = guessCategory(stop)
   if (category) query.category = category
+  // 記帳時間帶入這一天（時刻用現在的）
+  if (day.value?.date) query.date = day.value.date
   router.push({ name: 'home', query })
 }
 

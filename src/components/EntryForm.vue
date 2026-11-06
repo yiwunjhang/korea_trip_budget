@@ -36,8 +36,8 @@ const route = useRoute()
 const router = useRouter()
 
 /**
- * 從行程「記一筆」過來：網址帶 ?title=無垢屋&category=餐飲，
- * 帶入品項與分類後把網址清乾淨，並把游標放到金額。
+ * 從行程「記一筆」過來：網址帶 ?title=無垢屋&category=餐飲&date=2026-11-08，
+ * 帶入品項、分類與日期（時刻用現在的）後把網址清乾淨，並把游標放到金額。
  */
 watch(
   () => route.query,
@@ -46,6 +46,11 @@ watch(
     title.value = q.title
     if (typeof q.category === 'string' && FIXED_CATEGORIES.some((c) => c.name === q.category)) {
       category.value = q.category
+    }
+    if (typeof q.date === 'string' && /^d{4}-d{2}-d{2}$/.test(q.date)) {
+      // 首爾現在的時:分，接在行程那天的日期後面
+      const nowTime = toSeoulInputValue(new Date()).slice(11)
+      spentAt.value = `${q.date}T${nowTime}`
     }
     kind.value = 'expense'
     await router.replace({ query: {} })
@@ -166,6 +171,15 @@ const submitLabel = computed(() => {
 /** 時間有改過才在「更多」旁邊提示，避免忘記改回來 */
 const timeEdited = computed(() => spentAt.value !== toSeoulInputValue(new Date()))
 
+/** 記帳日期不是今天時（例如從行程記別天的帳），在金額下面提醒「記在 11/8（日）」 */
+const otherDayLabel = computed(() => {
+  const date = spentAt.value.slice(0, 10)
+  if (!date || date === toSeoulInputValue(new Date()).slice(0, 10)) return ''
+  const [y, m, d] = date.split('-').map(Number)
+  const weekday = ['日', '一', '二', '三', '四', '五', '六'][new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
+  return `${m}/${d}（${weekday}）`
+})
+
 async function submit() {
   if (!canSubmit.value || walletId.value === null) return
   saving.value = true
@@ -247,6 +261,9 @@ async function submit() {
       <p class="tabular mt-1 min-h-5 truncate text-sm text-ink-600">
         <template v-if="numericAmount > 0">{{ convertedLabel }}</template>
         <template v-if="title"><span v-if="numericAmount > 0"> ・ </span>品項：<b class="text-ink-900">{{ title }}</b></template>
+        <template v-if="otherDayLabel">
+          <span v-if="numericAmount > 0 || title"> ・ </span>記在 <b class="text-brand-600">{{ otherDayLabel }}</b>
+        </template>
       </p>
     </section>
 

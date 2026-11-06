@@ -37,6 +37,8 @@ function pick(stop: ItineraryStop) {
   const query: Record<string, string> = { title: shortStopTitle(stop.title) }
   const category = guessCategory(stop)
   if (category) query.category = category
+  // 顯示的是明天或之後的行程時，記帳時間也帶入那一天
+  if (day.value?.date) query.date = day.value.date
   router.replace({ name: 'home', query })
 }
 </script>
