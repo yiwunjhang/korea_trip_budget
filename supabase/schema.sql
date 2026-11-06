@@ -69,7 +69,8 @@ create table if not exists public.categories (
   id bigint generated always as identity primary key,
   user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   name text not null,
-  emoji text not null default '💸',
+  -- 圖示 key（見 src/utils/categoryIcons.ts），舊資料存 emoji 也相容
+  emoji text not null default 'other',
   sort_order int not null default 0
 );
 
@@ -289,13 +290,13 @@ begin
   if not exists (select 1 from public.categories where user_id = uid) then
     insert into public.categories (user_id, name, emoji, sort_order)
     values
-      (uid, '餐飲', '🍜', 1),
-      (uid, '交通', '🚇', 2),
-      (uid, '購物', '🛍️', 3),
-      (uid, '住宿', '🏨', 4),
-      (uid, '門票娛樂', '🎟️', 5),
-      (uid, '通訊雜支', '📱', 6),
-      (uid, '其他', '💸', 7);
+      (uid, '餐飲', 'food', 1),
+      (uid, '交通', 'transit', 2),
+      (uid, '購物', 'shopping', 3),
+      (uid, '住宿', 'hotel', 4),
+      (uid, '門票娛樂', 'ticket', 5),
+      (uid, '通訊雜支', 'phone', 6),
+      (uid, '其他', 'other', 7);
   end if;
 end $fn$;
 

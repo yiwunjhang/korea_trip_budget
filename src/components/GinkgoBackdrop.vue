@@ -4,13 +4,13 @@
  * 純裝飾，不吃點擊；有開「減少動態效果」的話就不飄。
  */
 const leaves = [
-  { left: '6%', top: '8%', size: 92, rotate: -24, blur: 1, opacity: 0.55, color: '#f4c22b', delay: 0 },
-  { left: '72%', top: '4%', size: 120, rotate: 32, blur: 3, opacity: 0.45, color: '#e3a50b', delay: -4 },
-  { left: '82%', top: '42%', size: 70, rotate: -48, blur: 0, opacity: 0.6, color: '#f9d873', delay: -8 },
-  { left: '-4%', top: '48%', size: 140, rotate: 18, blur: 4, opacity: 0.4, color: '#f4c22b', delay: -2 },
-  { left: '40%', top: '70%', size: 84, rotate: -12, blur: 2, opacity: 0.45, color: '#e3a50b', delay: -6 },
-  { left: '78%', top: '80%', size: 110, rotate: 40, blur: 3, opacity: 0.5, color: '#f4c22b', delay: -10 },
-  { left: '20%', top: '28%', size: 46, rotate: 60, blur: 0, opacity: 0.55, color: '#a8b82c', delay: -3 },
+  { left: '6%', top: '8%', size: 92, rotate: -24, blur: 1, opacity: 0.3, color: '#f4c22b', delay: 0 },
+  { left: '72%', top: '4%', size: 120, rotate: 32, blur: 3, opacity: 0.25, color: '#e3a50b', delay: -4 },
+  { left: '82%', top: '42%', size: 70, rotate: -48, blur: 0, opacity: 0.32, color: '#f9d873', delay: -8 },
+  { left: '-4%', top: '48%', size: 140, rotate: 18, blur: 4, opacity: 0.22, color: '#f4c22b', delay: -2 },
+  { left: '40%', top: '70%', size: 84, rotate: -12, blur: 2, opacity: 0.25, color: '#e3a50b', delay: -6 },
+  { left: '78%', top: '80%', size: 110, rotate: 40, blur: 3, opacity: 0.28, color: '#f4c22b', delay: -10 },
+  { left: '20%', top: '28%', size: 46, rotate: 60, blur: 0, opacity: 0.3, color: '#a8b82c', delay: -3 },
 ]
 </script>
 

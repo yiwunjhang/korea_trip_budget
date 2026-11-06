@@ -4,6 +4,9 @@ import { useRouter } from 'vue-router'
 import { useLedgerStore } from '../stores/ledger'
 import { useSessionStore } from '../stores/session'
 import { formatKRW, formatTWD, krwToTwd } from '../utils/money'
+import { X } from 'lucide-vue-next'
+import CategoryIcon from '../components/CategoryIcon.vue'
+import { CATEGORY_ICONS, categoryIconKey } from '../utils/categoryIcons'
 
 const ledger = useLedgerStore()
 const session = useSessionStore()
@@ -20,7 +23,17 @@ const form = reactive({
 
 const saved = ref(false)
 const newCategory = ref('')
-const newEmoji = ref('💸')
+/** 新分類的圖示 key（存在 categories.emoji 欄位）；沒手動選就依名稱自動猜 */
+const newIcon = ref('other')
+const iconTouched = ref(false)
+watch(newCategory, (name) => {
+  if (!iconTouched.value) newIcon.value = categoryIconKey(name)
+})
+
+function pickIcon(key: string) {
+  newIcon.value = key
+  iconTouched.value = true
+}
 
 /** 設定載入後填進表單 */
 watch(
@@ -53,9 +66,10 @@ async function save() {
 async function addCategory() {
   const name = newCategory.value.trim()
   if (!name) return
-  await ledger.addCategory(name, newEmoji.value.trim() || '💸')
+  await ledger.addCategory(name, newIcon.value)
   newCategory.value = ''
-  newEmoji.value = '💸'
+  newIcon.value = 'other'
+  iconTouched.value = false
 }
 
 async function logout() {
@@ -147,23 +161,47 @@ async function logout() {
       <ul class="flex flex-wrap gap-2">
         <li v-for="c in ledger.categories" :key="c.id">
           <span class="chip">
-            {{ c.emoji }} {{ c.name }}
+            <CategoryIcon :name="c.name" :size="16" class="text-brand-600" />
+            {{ c.name }}
             <button
               type="button"
-              class="ml-1 text-ink-400 transition hover:text-flame-600"
+              class="ml-0.5 text-ink-400 transition hover:text-flame-600"
               aria-label="刪除分類"
               @click="ledger.removeCategory(c.id)"
             >
-              ✕
+              <X :size="14" />
             </button>
           </span>
         </li>
       </ul>
 
-      <form class="flex gap-2" @submit.prevent="addCategory">
-        <input v-model="newEmoji" class="field w-16 text-center" maxlength="4" />
-        <input v-model="newCategory" class="field flex-1" placeholder="新分類名稱" />
-        <button class="btn-ghost" type="submit">新增</button>
+      <form class="space-y-2" @submit.prevent="addCategory">
+        <div class="flex gap-2">
+          <span
+            class="flex w-11 shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white/65 text-brand-600"
+          >
+            <component :is="CATEGORY_ICONS[newIcon]" :size="20" :stroke-width="1.75" />
+          </span>
+          <input v-model="newCategory" class="field flex-1" placeholder="新分類名稱" />
+          <button class="btn-ghost" type="submit">新增</button>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            v-for="(icon, key) in CATEGORY_ICONS"
+            :key="key"
+            type="button"
+            class="flex h-9 w-9 items-center justify-center rounded-lg border transition"
+            :class="
+              newIcon === key
+                ? 'border-brand-400 bg-brand-100/80 text-brand-700'
+                : 'border-white/80 bg-white/50 text-ink-600'
+            "
+            :aria-label="`圖示 ${key}`"
+            @click="pickIcon(key)"
+          >
+            <component :is="icon" :size="18" :stroke-width="1.75" />
+          </button>
+        </div>
       </form>
       <p class="text-xs text-ink-400">
         刪除分類不會動到已經記過的帳（帳上存的是分類名稱文字）。

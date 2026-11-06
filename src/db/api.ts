@@ -297,7 +297,7 @@ export async function listCategories(): Promise<Category[]> {
   }))
 }
 
-export async function createCategory(name: string, emoji = '💸'): Promise<void> {
+export async function createCategory(name: string, emoji = 'other'): Promise<void> {
   const { error } = await supabase.from('categories').insert({ name, emoji, sort_order: 50 })
   if (error) throw new Error(error.message)
 }

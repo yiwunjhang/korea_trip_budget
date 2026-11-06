@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import CategoryIcon from '../components/CategoryIcon.vue'
 import TransactionList from '../components/TransactionList.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { formatKRW, formatTWD } from '../utils/money'
@@ -35,10 +36,6 @@ const byCategory = computed(() => {
 })
 
 const totalKrw = computed(() => byCategory.value.reduce((sum, row) => sum + row.krw, 0))
-
-function emoji(category: string): string {
-  return ledger.categories.find((c) => c.name === category)?.emoji ?? '💸'
-}
 </script>
 
 <template>
@@ -55,7 +52,9 @@ function emoji(category: string): string {
           :key="row.category"
           class="flex items-center gap-3 px-4 py-3"
         >
-          <span class="text-base">{{ emoji(row.category) }}</span>
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+            <CategoryIcon :name="row.category" :size="18" />
+          </span>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-medium text-ink-900">{{ row.category }}</p>
             <div class="mt-1 h-1 overflow-hidden rounded-full bg-brand-50">
@@ -113,7 +112,8 @@ function emoji(category: string): string {
           :class="{ 'chip-on': categoryFilter === c.name }"
           @click="categoryFilter = c.name"
         >
-          {{ c.emoji }} {{ c.name }}
+          <CategoryIcon :name="c.name" :size="15" />
+          {{ c.name }}
         </button>
       </div>
     </section>

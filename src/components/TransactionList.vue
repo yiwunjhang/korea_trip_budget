@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Transaction } from '../db/api'
+import { Trash2 } from 'lucide-vue-next'
 import { useLedgerStore } from '../stores/ledger'
+import CategoryIcon from './CategoryIcon.vue'
 import { formatKRW, formatSeoulDate, formatSeoulDateTime, formatTWD } from '../utils/money'
 
 const props = defineProps<{ items: Transaction[]; emptyText?: string }>()
@@ -58,6 +60,9 @@ async function remove(tx: Transaction) {
 
       <ul class="glass divide-y divide-line overflow-hidden">
         <li v-for="tx in group.list" :key="tx.id" class="flex items-center gap-3 px-4 py-3">
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+            <CategoryIcon :name="tx.kind === 'topup' ? '加值換匯' : tx.category" :size="18" />
+          </span>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-medium text-ink-900">
               {{ tx.title || kindLabel(tx) }}
@@ -88,11 +93,11 @@ async function remove(tx: Transaction) {
 
           <button
             type="button"
-            class="shrink-0 px-1 text-ink-400 transition hover:text-flame-600"
+            class="shrink-0 p-1 text-ink-400 transition hover:text-flame-600"
             aria-label="刪除"
             @click="remove(tx)"
           >
-            ✕
+            <Trash2 :size="16" :stroke-width="1.75" />
           </button>
         </li>
       </ul>

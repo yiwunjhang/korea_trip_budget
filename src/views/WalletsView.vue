@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import type { Currency, WalletKind } from '../db/api'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney } from '../utils/money'
+import { tracksBalance } from '../utils/wallet'
 
 const ledger = useLedgerStore()
 
@@ -14,14 +15,30 @@ const kindLabels: Record<WalletKind, string> = {
   other: '其他',
 }
 
+/** 現金、交通卡：有餘額 */
+const balanceWallets = computed(() => ledger.wallets.filter((w) => tracksBalance(w.kind)))
+/** 悠遊付、信用卡：只記已刷多少 */
+const payWallets = computed(() => ledger.wallets.filter((w) => !tracksBalance(w.kind)))
+
 /** 新增錢包的草稿 */
 const draft = reactive({
   name: '',
-  kind: 'other' as WalletKind,
-  balance_currency: 'TWD' as Currency,
+  kind: 'cash' as WalletKind,
+  balance_currency: 'KRW' as Currency,
   opening_balance: 0,
   default_krw_per_twd: null as number | null,
 })
+
+/** 悠遊付／信用卡一律以台幣計、沒有期初金額 */
+watch(
+  () => draft.kind,
+  (kind) => {
+    if (!tracksBalance(kind)) {
+      draft.balance_currency = 'TWD'
+      draft.opening_balance = 0
+    }
+  },
+)
 
 const adding = ref(false)
 
@@ -31,7 +48,7 @@ async function add() {
     name: draft.name.trim(),
     kind: draft.kind,
     balance_currency: draft.balance_currency,
-    opening_balance: draft.opening_balance || 0,
+    opening_balance: tracksBalance(draft.kind) ? draft.opening_balance || 0 : 0,
     default_krw_per_twd: draft.default_krw_per_twd,
   })
   draft.name = ''
@@ -56,17 +73,19 @@ async function toggleActive(id: number, isActive: boolean) {
 }
 
 async function remove(id: number, name: string) {
-  if (!window.confirm(`刪除錢包「${name}」？（已經有帳掛在上面會刪不掉，請改用停用）`)) return
+  if (!window.confirm(`刪除「${name}」？（已經有帳掛在上面會刪不掉，請改用停用）`)) return
   await ledger.removeWallet(id)
 }
 </script>
 
 <template>
-  <div class="space-y-5">
+  <div class="space-y-6">
+    <!-- 現金類：有餘額 -->
     <section class="space-y-3">
-      <h2 class="px-1 text-sm font-semibold text-ink-800">錢包與餘額</h2>
+      <h2 class="px-1 text-sm font-semibold text-ink-800">現金與餘額</h2>
+      <p v-if="!balanceWallets.length" class="card text-center text-sm text-ink-400">還沒有現金錢包</p>
 
-      <div v-for="w in ledger.wallets" :key="w.wallet_id" class="card space-y-3">
+      <div v-for="w in balanceWallets" :key="w.wallet_id" class="card space-y-3" :class="{ 'opacity-60': !w.is_active }">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
             <p class="truncate font-medium text-ink-900">
@@ -123,14 +142,58 @@ async function remove(id: number, name: string) {
       </div>
     </section>
 
-    <!-- 新增錢包 -->
+    <!-- 悠遊付、信用卡：只看已刷多少 -->
+    <section class="space-y-3">
+      <h2 class="px-1 text-sm font-semibold text-ink-800">
+        付款方式 <span class="font-normal text-ink-400">悠遊付・信用卡（不算餘額）</span>
+      </h2>
+      <p v-if="!payWallets.length" class="card text-center text-sm text-ink-400">還沒有悠遊付或信用卡</p>
+
+      <div v-for="w in payWallets" :key="w.wallet_id" class="card space-y-3" :class="{ 'opacity-60': !w.is_active }">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <p class="truncate font-medium text-ink-900">
+              {{ w.name }}
+              <span class="ml-1 text-xs font-normal text-ink-400">{{ kindLabels[w.kind] }}</span>
+            </p>
+            <p class="tabular mt-1 text-xl font-bold text-ink-900">
+              {{ formatMoney(w.spent, w.balance_currency) }}
+            </p>
+            <p class="text-xs text-ink-400">已刷（退款已扣除）</p>
+          </div>
+
+          <div class="flex shrink-0 flex-col gap-1">
+            <button class="btn-ghost px-3 py-1.5 text-xs" @click="toggleActive(w.wallet_id, w.is_active)">
+              {{ w.is_active ? '停用' : '啟用' }}
+            </button>
+            <button class="btn-danger px-3 py-1.5 text-xs" @click="remove(w.wallet_id, w.name)">
+              刪除
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <span class="label">實際扣款匯率（1 台幣 = ? 韓元，留空＝用預設）</span>
+          <input
+            class="field tabular"
+            type="number"
+            step="0.01"
+            placeholder="沿用預設"
+            :value="w.default_krw_per_twd ?? ''"
+            @change="saveRate(w.wallet_id, ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- 新增 -->
     <section>
-      <button v-if="!adding" class="btn-ghost w-full" @click="adding = true">＋ 新增錢包</button>
+      <button v-if="!adding" class="btn-ghost w-full" @click="adding = true">＋ 新增錢包／付款方式</button>
 
       <form v-else class="card space-y-3" @submit.prevent="add">
         <div>
           <label class="label" for="w-name">名稱</label>
-          <input id="w-name" v-model="draft.name" class="field" placeholder="例：T-money 卡" required />
+          <input id="w-name" v-model="draft.name" class="field" placeholder="例：旅伴悠遊付、T-money 卡" required />
         </div>
 
         <div class="grid grid-cols-2 gap-2">
@@ -142,16 +205,27 @@ async function remove(id: number, name: string) {
               </option>
             </select>
           </div>
-          <div>
+          <div v-if="tracksBalance(draft.kind)">
             <label class="label" for="w-currency">餘額幣別</label>
             <select id="w-currency" v-model="draft.balance_currency" class="field">
-              <option value="TWD">台幣（悠遊付、信用卡）</option>
               <option value="KRW">韓元（現金、T-money）</option>
+              <option value="TWD">台幣</option>
             </select>
+          </div>
+          <div v-else>
+            <label class="label" for="w-rate">實際扣款匯率（選填）</label>
+            <input
+              id="w-rate"
+              v-model.number="draft.default_krw_per_twd"
+              class="field tabular"
+              type="number"
+              step="0.01"
+              placeholder="沿用預設"
+            />
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
+        <div v-if="tracksBalance(draft.kind)" class="grid grid-cols-2 gap-2">
           <div>
             <label class="label" for="w-opening">期初餘額</label>
             <input
@@ -163,9 +237,9 @@ async function remove(id: number, name: string) {
             />
           </div>
           <div>
-            <label class="label" for="w-rate">專屬匯率（選填）</label>
+            <label class="label" for="w-rate2">專屬匯率（選填）</label>
             <input
-              id="w-rate"
+              id="w-rate2"
               v-model.number="draft.default_krw_per_twd"
               class="field tabular"
               type="number"

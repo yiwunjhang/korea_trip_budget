@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { Leaf } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '../stores/session'
 import { supabaseConfigured } from '../supabase'
@@ -41,7 +42,10 @@ async function submit() {
 
 <template>
   <div class="mx-auto mt-10 max-w-sm">
-    <h1 class="text-center text-2xl font-bold text-ink-900">🇰🇷 韓國旅行記帳</h1>
+    <div class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-brand-400 to-brand-500 text-ink-900 shadow-[0_8px_20px_-8px_rgba(227,165,11,0.7)]">
+      <Leaf :size="28" :stroke-width="2" />
+    </div>
+    <h1 class="text-center text-2xl font-bold text-ink-900">韓國旅行記帳</h1>
     <p class="mt-1 text-center text-sm text-ink-600">韓元／台幣雙幣別，花多少就扣多少</p>
 
     <form class="card mt-6 space-y-4" @submit.prevent="submit">

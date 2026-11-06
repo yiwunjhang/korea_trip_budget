@@ -4,10 +4,13 @@ import BudgetCard from '../components/BudgetCard.vue'
 import RebateCard from '../components/RebateCard.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney } from '../utils/money'
+import { tracksBalance } from '../utils/wallet'
 
-/** 總覽：預算剩多少、悠遊付回饋額度、各錢包餘額 */
+/** 總覽：預算剩多少、悠遊付回饋額度、現金餘額、刷卡已刷 */
 const ledger = useLedgerStore()
 const summary = computed(() => ledger.summary)
+const balanceWallets = computed(() => ledger.activeWallets.filter((w) => tracksBalance(w.kind)))
+const payWallets = computed(() => ledger.activeWallets.filter((w) => !tracksBalance(w.kind)))
 </script>
 
 <template>
@@ -33,11 +36,11 @@ const summary = computed(() => ledger.summary)
     <!-- 悠遊付回饋 -->
     <RebateCard />
 
-    <!-- 錢包餘額 -->
-    <section>
-      <h2 class="mb-2 px-1 text-sm font-semibold text-ink-800">錢包餘額</h2>
+    <!-- 現金：剩多少 -->
+    <section v-if="balanceWallets.length">
+      <h2 class="mb-2 px-1 text-sm font-semibold text-ink-800">現金餘額</h2>
       <ul class="grid grid-cols-2 gap-3">
-        <li v-for="w in ledger.activeWallets" :key="w.wallet_id" class="card">
+        <li v-for="w in balanceWallets" :key="w.wallet_id" class="card">
           <p class="truncate text-xs font-medium text-ink-600">{{ w.name }}</p>
           <p
             class="tabular mt-1 text-lg font-bold"
@@ -48,6 +51,20 @@ const summary = computed(() => ledger.summary)
           <p class="tabular text-xs text-ink-400">
             已用 {{ formatMoney(w.spent, w.balance_currency) }}
           </p>
+        </li>
+      </ul>
+    </section>
+
+    <!-- 悠遊付、信用卡：刷了多少 -->
+    <section v-if="payWallets.length">
+      <h2 class="mb-2 px-1 text-sm font-semibold text-ink-800">悠遊付・信用卡已刷</h2>
+      <ul class="grid grid-cols-2 gap-3">
+        <li v-for="w in payWallets" :key="w.wallet_id" class="card">
+          <p class="truncate text-xs font-medium text-ink-600">{{ w.name }}</p>
+          <p class="tabular mt-1 text-lg font-bold text-ink-900">
+            {{ formatMoney(w.spent, w.balance_currency) }}
+          </p>
+          <p class="text-xs text-ink-400">已刷</p>
         </li>
       </ul>
     </section>

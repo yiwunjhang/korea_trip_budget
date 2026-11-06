@@ -7,7 +7,7 @@
    ===================================================================== */
 
 @theme {
-  --color-canvas: #fbf3df;
+  --color-canvas: #faf7f0;
 
   /* 文字：深栗色（比純黑柔和，跟金黃色比較搭） */
   --color-ink-900: #2f2414;
@@ -49,13 +49,13 @@ body {
   color: var(--color-ink-900);
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
-  /* 秋日天空 → 落葉金黃；光暈讓毛玻璃有東西可以透 */
+  /* 米白為底，只留幾團很淡的金色光暈，讓毛玻璃有一點東西可以透 */
   background:
-    radial-gradient(60% 40% at 15% 10%, rgb(255 214 92 / 0.55), transparent 70%),
-    radial-gradient(50% 35% at 90% 30%, rgb(255 180 60 / 0.4), transparent 70%),
-    radial-gradient(70% 45% at 30% 85%, rgb(250 200 70 / 0.45), transparent 70%),
-    radial-gradient(45% 30% at 85% 80%, rgb(170 205 235 / 0.45), transparent 70%),
-    linear-gradient(180deg, #f3ead2 0%, #fbf0d4 45%, #fae4b0 100%);
+    radial-gradient(55% 35% at 12% 8%, rgb(250 214 120 / 0.22), transparent 70%),
+    radial-gradient(45% 30% at 92% 35%, rgb(245 200 110 / 0.16), transparent 70%),
+    radial-gradient(60% 40% at 25% 90%, rgb(248 210 120 / 0.18), transparent 70%),
+    radial-gradient(40% 28% at 88% 85%, rgb(190 210 225 / 0.2), transparent 70%),
+    linear-gradient(180deg, #fbf8f1 0%, #f9f5ec 55%, #f6f0e2 100%);
   background-attachment: fixed;
 }
 

@@ -4,6 +4,9 @@ import type { Currency, TxKind } from '../db/api'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney, krwToTwd, seoulInputToISO, toSeoulInputValue, twdToKrw } from '../utils/money'
 import { previewRebate, STAGE_CAP_TWD } from '../utils/easywallet'
+import { tracksBalance } from '../utils/wallet'
+import CategoryIcon from './CategoryIcon.vue'
+import { ChevronDown, CircleCheck } from 'lucide-vue-next'
 
 /**
  * 記帳表單，順序照結帳當下的動作排：
@@ -44,8 +47,18 @@ watch([walletId, () => ledger.baseRate], () => {
   if (!rateTouched.value) rate.value = ledger.rateFor(walletId.value)
 })
 
+/** 加值只對有餘額的錢包（現金、交通卡）有意義；悠遊付、信用卡不算餘額 */
+const balanceWallets = computed(() => ledger.activeWallets.filter((w) => tracksBalance(w.kind)))
+const walletChoices = computed(() =>
+  kind.value === 'topup' ? balanceWallets.value : ledger.activeWallets,
+)
+
 watch(kind, (value) => {
   if (value !== 'topup') fundedWalletId.value = null
+  // 切到加值時，若目前選的是悠遊付／信用卡，改選第一個現金錢包
+  if (!walletChoices.value.some((w) => w.wallet_id === walletId.value)) {
+    walletId.value = walletChoices.value[0]?.wallet_id ?? null
+  }
 })
 
 const numericAmount = computed(() => {
@@ -135,7 +148,7 @@ async function submit() {
     note.value = ''
     spentAt.value = toSeoulInputValue(new Date())
     kind.value = 'expense'
-    toast.value = `✓ 已記 ${formatMoney(created.amount_krw, 'KRW')}（${formatMoney(created.amount_twd, 'TWD')}）`
+    toast.value = `已記${formatMoney(created.amount_krw, 'KRW')}（${formatMoney(created.amount_twd, 'TWD')}）`
     setTimeout(() => (toast.value = ''), 2500)
   }
 }
@@ -196,7 +209,7 @@ async function submit() {
         <span class="label">{{ kind === 'topup' ? '加值到哪個錢包' : '用哪個付' }}</span>
         <div class="grid grid-cols-2 gap-2">
           <button
-            v-for="w in ledger.activeWallets"
+            v-for="w in walletChoices"
             :key="w.wallet_id"
             type="button"
             class="rounded-xl border px-3 py-2 text-left transition"
@@ -209,11 +222,18 @@ async function submit() {
           >
             <span class="block truncate text-sm font-medium text-ink-900">{{ w.name }}</span>
             <span class="tabular block text-xs text-ink-400">
-              餘額 {{ formatMoney(w.balance, w.balance_currency) }}
+              <template v-if="tracksBalance(w.kind)">餘額 {{ formatMoney(w.balance, w.balance_currency) }}</template>
+              <template v-else>已刷 {{ formatMoney(w.spent, w.balance_currency) }}</template>
             </span>
           </button>
         </div>
-        <p v-if="wallet && numericAmount > 0" class="tabular mt-2 text-xs text-ink-600">
+        <p v-if="kind === 'topup' && !walletChoices.length" class="text-xs text-ink-400">
+          還沒有現金錢包可以加值，請先到「錢包」頁新增。
+        </p>
+        <p
+          v-if="wallet && tracksBalance(wallet.kind) && numericAmount > 0"
+          class="tabular mt-2 text-xs text-ink-600"
+        >
           {{ wallet.name }}餘額 {{ formatMoney(wallet.balance, wallet.balance_currency) }} →
           <b :class="balanceAfter < 0 ? 'text-flame-600' : 'text-ink-900'">
             {{ formatMoney(balanceAfter, wallet.balance_currency) }}
@@ -272,7 +292,7 @@ async function submit() {
         <select id="funded" v-model="fundedWalletId" class="field">
           <option :value="null">台灣帳戶／外部匯入（不扣任何錢包）</option>
           <option
-            v-for="w in ledger.activeWallets.filter((x) => x.wallet_id !== walletId)"
+            v-for="w in balanceWallets.filter((x) => x.wallet_id !== walletId)"
             :key="w.wallet_id"
             :value="w.wallet_id"
           >
@@ -299,7 +319,7 @@ async function submit() {
             "
             @click="category = c.name"
           >
-            <span class="text-xl leading-none">{{ c.emoji }}</span>
+            <CategoryIcon :name="c.name" :size="22" />
             <span class="w-full truncate px-1 text-center">{{ c.name }}</span>
           </button>
         </div>
@@ -320,7 +340,7 @@ async function submit() {
           更多：時間、匯率、備註
           <span v-if="timeEdited && !showMore" class="text-brand-600">（時間已修改）</span>
         </span>
-        <span class="transition" :class="showMore ? 'rotate-180' : ''">▾</span>
+        <ChevronDown :size="16" class="transition" :class="showMore ? 'rotate-180' : ''" />
       </button>
 
       <div v-if="showMore" class="space-y-3">
@@ -368,9 +388,10 @@ async function submit() {
     >
       <p
         v-if="toast"
-        class="glass fixed inset-x-4 top-[calc(4rem+env(safe-area-inset-top))] z-30 mx-auto max-w-sm px-4 py-3 text-center text-sm font-medium text-mint-600"
+        class="glass fixed inset-x-4 top-[calc(4rem+env(safe-area-inset-top))] z-30 mx-auto flex max-w-sm items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-mint-600"
         role="status"
       >
+        <CircleCheck :size="18" />
         {{ toast }}
       </p>
     </Transition>

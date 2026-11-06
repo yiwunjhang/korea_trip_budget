@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { Leaf } from 'lucide-vue-next'
 import AppNav from './components/AppNav.vue'
 import GinkgoBackdrop from './components/GinkgoBackdrop.vue'
 import { useSessionStore } from './stores/session'
@@ -34,7 +35,10 @@ watch(() => session.userId, load)
       class="sticky top-0 z-10 border-b border-white/60 bg-white/35 px-4 py-3 backdrop-blur-xl backdrop-saturate-150"
     >
       <div class="mx-auto flex max-w-xl items-center justify-between">
-        <h1 class="text-base font-bold text-ink-900">🇰🇷 {{ title }}</h1>
+        <h1 class="flex items-center gap-1.5 text-base font-bold text-ink-900">
+          <Leaf :size="18" :stroke-width="2" class="text-brand-500" aria-hidden="true" />
+          {{ title }}
+        </h1>
         <span v-if="ledger.loading" class="text-xs text-ink-400">同步中…</span>
       </div>
     </header>
