@@ -149,26 +149,21 @@ create policy "transactions_own" on public.transactions
 -- 旅伴之間要能比較「誰在什麼項目花多少」，所以分類全員固定，不開放自訂。
 -- 清單要和前端 src/utils/categories.ts 的 FIXED_CATEGORIES 一致。
 -- not valid：只檢查之後新增／修改的帳，舊資料不動（統計時不在清單內的會算到「其他」）。
+-- 「機票」「住宿」算進總預算，但每日統計會排除（前端與 v_budget_summary.spend_days）。
 create or replace function public.fixed_categories()
 returns text[]
 language sql
 immutable
 as $fn$
-  select array['餐飲', '交通', '購物', '住宿', '門票娛樂', '通訊雜支', '其他']
+  select array['餐飲', '交通', '機票', '購物', '住宿', '門票娛樂', '通訊雜支', '其他']
 $fn$;
 
-do $do$
-begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'transactions_category_fixed'
-  ) then
-    alter table public.transactions
-      add constraint transactions_category_fixed
-      check (category = any (array['餐飲', '交通', '購物', '住宿', '門票娛樂', '通訊雜支', '其他', '加值換匯']))
-      not valid;
-  end if;
-end
-$do$;
+-- 每次重跑都換成最新清單（加分類時只要改上面和這裡）
+alter table public.transactions drop constraint if exists transactions_category_fixed;
+alter table public.transactions
+  add constraint transactions_category_fixed
+  check (category = any (array['餐飲', '交通', '機票', '購物', '住宿', '門票娛樂', '通訊雜支', '其他', '加值換匯']))
+  not valid;
 
 -- =====================================================================
 -- 旅伴群組：各自用自己的帳號記帳（餘額、明細只有自己看得到），
@@ -422,7 +417,8 @@ left join (
     sum(spend_sign * amount_krw) as spent_krw,
     sum(spend_sign * amount_twd) as spent_twd,
     count(*) as entry_count,
-    count(distinct (spent_at at time zone 'Asia/Seoul')::date) as spend_days
+    -- 機票、住宿不算「有花費的天數」（常常是出發前就付了）
+    count(distinct case when category not in ('機票', '住宿') then (spent_at at time zone 'Asia/Seoul')::date end) as spend_days
   from public.v_transaction_effects
   where spend_sign <> 0
   group by user_id

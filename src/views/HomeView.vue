@@ -4,6 +4,7 @@ import EntryForm from '../components/EntryForm.vue'
 import TransactionList from '../components/TransactionList.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney, formatSeoulDate } from '../utils/money'
+import { isDailyCategory } from '../utils/categories'
 
 /** 首頁就是記帳：上面一行今天花多少／預算剩多少，接著直接輸入金額 */
 const ledger = useLedgerStore()
@@ -11,8 +12,12 @@ const ledger = useLedgerStore()
 /** 今天（首爾時間）花了多少 */
 const today = computed(() => {
   const todayLabel = formatSeoulDate(new Date().toISOString())
+  // 機票、住宿不算「今天花多少」，不然付款那天會失真
   const todays = ledger.transactions.filter(
-    (tx) => tx.kind !== 'topup' && formatSeoulDate(tx.spent_at) === todayLabel,
+    (tx) =>
+      tx.kind !== 'topup' &&
+      isDailyCategory(tx.category) &&
+      formatSeoulDate(tx.spent_at) === todayLabel,
   )
   const sign = (kind: string) => (kind === 'refund' ? -1 : 1)
   return {

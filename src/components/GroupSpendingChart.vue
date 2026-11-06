@@ -4,7 +4,7 @@ import type { Currency, GroupSpendingRow } from '../db/api'
 import { useGroupStore } from '../stores/group'
 import { useLedgerStore } from '../stores/ledger'
 import { useSessionStore } from '../stores/session'
-import { FIXED_CATEGORIES, normalizeCategory } from '../utils/categories'
+import { DAILY_CATEGORIES, isDailyCategory, NON_DAILY_CATEGORIES, normalizeCategory } from '../utils/categories'
 import { formatMoney } from '../utils/money'
 import CategoryIcon from './CategoryIcon.vue'
 
@@ -51,7 +51,25 @@ const people = computed(() => {
   return list.sort((a, b) => Number(b.id === session.userId) - Number(a.id === session.userId))
 })
 
-const days = computed(() => [...new Set(rows.value.map((r) => r.day))].sort())
+/** 每日統計排除機票、住宿：常在出發前一次付清，算進某一天會失真 */
+const dailyRows = computed(() => rows.value.filter((r) => isDailyCategory(r.category)))
+
+/** 機票、住宿另外列：每個人各花多少（不進每日長條） */
+const nonDaily = computed(() =>
+  people.value
+    .map((p) => {
+      const items = NON_DAILY_CATEGORIES.map((category) => ({
+        category,
+        value: rows.value
+          .filter((r) => r.member_id === p.id && r.category === category)
+          .reduce((s, r) => s + amountOf(r), 0),
+      }))
+      return { id: p.id, name: p.name, items, total: items.reduce((s, i) => s + i.value, 0) }
+    })
+    .filter((p) => p.total !== 0),
+)
+
+const days = computed(() => [...new Set(dailyRows.value.map((r) => r.day))].sort())
 
 const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
 const selectedDay = ref<string>('all')
@@ -77,8 +95,8 @@ interface Bar {
 
 function barsFor(dayFilter: (day: string) => boolean): Bar[] {
   return people.value.map((p) => {
-    const mine = rows.value.filter((r) => r.member_id === p.id && dayFilter(r.day))
-    const segments = FIXED_CATEGORIES.map((c) => ({
+    const mine = dailyRows.value.filter((r) => r.member_id === p.id && dayFilter(r.day))
+    const segments = DAILY_CATEGORIES.map((c) => ({
       category: c.name,
       color: c.color,
       value: mine.filter((r) => r.category === c.name).reduce((s, r) => s + amountOf(r), 0),
@@ -91,7 +109,7 @@ function barsFor(dayFilter: (day: string) => boolean): Bar[] {
 const groups = computed(() => {
   const list = shownDays.value.map((day) => ({ key: day, label: dayLabel(day), bars: barsFor((d) => d === day) }))
   if (selectedDay.value === 'all' && days.value.length > 1) {
-    list.unshift({ key: 'total', label: '全部合計', bars: barsFor(() => true) })
+    list.unshift({ key: 'total', label: '全部合計（不含機票、住宿）', bars: barsFor(() => true) })
   }
   return list
 })
@@ -127,7 +145,7 @@ const table = computed(() => {
   const bars = barsFor(inScope)
   return {
     people: bars.map((b) => ({ id: b.personId, name: b.name, total: b.total })),
-    rows: FIXED_CATEGORIES.map((c) => ({
+    rows: DAILY_CATEGORIES.map((c) => ({
       category: c.name,
       color: c.color,
       values: bars.map((b) => b.segments.find((s) => s.category === c.name)?.value ?? 0),
@@ -170,6 +188,38 @@ function dayLabel(day: string): string {
     <p v-if="!rows.length" class="py-6 text-center text-sm text-ink-400">還沒有花費紀錄</p>
 
     <template v-else>
+      <!-- 機票、住宿：另外列，不算進每天 -->
+      <div v-if="nonDaily.length" class="rounded-xl border border-white/80 bg-white/50 px-3 py-2.5">
+        <p class="text-xs font-medium text-ink-800">
+          機票・住宿 <span class="font-normal text-ink-400">（不算進每日花費）</span>
+        </p>
+        <table class="tabular mt-1.5 w-full text-xs">
+          <thead>
+            <tr class="text-ink-400">
+              <th class="py-0.5 text-left font-normal"></th>
+              <th v-for="c in NON_DAILY_CATEGORIES" :key="c" class="py-0.5 text-right font-normal">
+                <span class="inline-flex items-center gap-1">
+                  <CategoryIcon :name="c" :size="13" /> {{ c }}
+                </span>
+              </th>
+              <th class="py-0.5 text-right font-normal">合計</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in nonDaily" :key="p.id">
+              <td class="py-0.5 text-ink-600">{{ p.name }}</td>
+              <td v-for="i in p.items" :key="i.category" class="py-0.5 text-right text-ink-800">
+                {{ i.value ? formatMoney(i.value, currency) : '—' }}
+              </td>
+              <td class="py-0.5 text-right font-semibold text-ink-900">{{ formatMoney(p.total, currency) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p v-if="!days.length" class="py-4 text-center text-sm text-ink-400">還沒有旅途中的花費</p>
+
+      <template v-else>
       <!-- 篩選：天數 -->
       <div class="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
         <button
@@ -194,7 +244,7 @@ function dayLabel(day: string): string {
 
       <!-- 圖例：分類固定、顏色固定 -->
       <ul class="flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-ink-600">
-        <li v-for="c in FIXED_CATEGORIES" :key="c.name" class="flex items-center gap-1">
+        <li v-for="c in DAILY_CATEGORIES" :key="c.name" class="flex items-center gap-1">
           <span class="h-2.5 w-2.5 rounded-sm" :style="{ background: c.color }" />
           {{ c.name }}
         </li>
@@ -293,6 +343,7 @@ function dayLabel(day: string): string {
           {{ group.loading ? '更新中…' : '重新整理' }}
         </button>
       </div>
+      </template>
     </template>
   </section>
 </template>
