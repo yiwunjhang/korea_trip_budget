@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import BudgetCard from '../components/BudgetCard.vue'
 import EntryForm from '../components/EntryForm.vue'
-import RebateCard from '../components/RebateCard.vue'
 import TransactionList from '../components/TransactionList.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney, formatSeoulDate } from '../utils/money'
 
+/** 首頁就是記帳：上面一行今天花多少／預算剩多少，接著直接輸入金額 */
 const ledger = useLedgerStore()
-
-const summary = computed(() => ledger.summary)
 
 /** 今天（首爾時間）花了多少 */
 const today = computed(() => {
@@ -20,80 +17,47 @@ const today = computed(() => {
   const sign = (kind: string) => (kind === 'refund' ? -1 : 1)
   return {
     krw: todays.reduce((sum, tx) => sum + sign(tx.kind) * tx.amount_krw, 0),
-    twd: todays.reduce((sum, tx) => sum + sign(tx.kind) * tx.amount_twd, 0),
     count: todays.length,
   }
 })
 
-const recent = computed(() => ledger.transactions.slice(0, 8))
+const remainingKrw = computed(() =>
+  ledger.summary && ledger.summary.budget_krw > 0 ? ledger.summary.remaining_krw : null,
+)
+
+const recent = computed(() => ledger.transactions.slice(0, 5))
 </script>
 
 <template>
-  <div class="space-y-5">
-    <!-- 預算：剩多少 -->
-    <section v-if="summary" class="grid grid-cols-2 gap-3">
-      <BudgetCard
-        label="韓元預算"
-        currency="KRW"
-        :budget="summary.budget_krw"
-        :spent="summary.spent_krw"
-        :remaining="summary.remaining_krw"
-      />
-      <BudgetCard
-        label="台幣預算"
-        currency="TWD"
-        :budget="summary.budget_twd"
-        :spent="summary.spent_twd"
-        :remaining="summary.remaining_twd"
-      />
-    </section>
+  <div class="space-y-4">
+    <!-- 今天／預算：一行就好，細節在「總覽」 -->
+    <router-link
+      :to="{ name: 'overview' }"
+      class="glass flex items-center justify-between px-4 py-2.5 text-xs text-ink-600"
+    >
+      <span class="tabular">
+        今天 <b class="text-sm text-ink-900">{{ formatMoney(today.krw, 'KRW') }}</b>
+        <span class="text-ink-400">（{{ today.count }} 筆）</span>
+      </span>
+      <span v-if="remainingKrw !== null" class="tabular">
+        預算剩
+        <b class="text-sm" :class="remainingKrw < 0 ? 'text-flame-600' : 'text-ink-900'">
+          {{ formatMoney(remainingKrw, 'KRW') }}
+        </b>
+        ›
+      </span>
+      <span v-else class="text-ink-400">看總覽 ›</span>
+    </router-link>
 
-    <!-- 今日 -->
-    <section class="card flex items-center justify-between">
-      <div>
-        <p class="text-xs font-medium text-ink-600">今天花費（{{ today.count }} 筆）</p>
-        <p class="tabular mt-1 text-xl font-bold text-ink-900">
-          {{ formatMoney(today.krw, 'KRW') }}
-        </p>
-      </div>
-      <p class="tabular text-sm text-ink-600">{{ formatMoney(today.twd, 'TWD') }}</p>
-    </section>
+    <EntryForm />
 
-    <!-- 錢包餘額 -->
-    <section>
-      <h2 class="mb-2 px-1 text-sm font-semibold text-ink-800">錢包餘額</h2>
-      <ul class="grid grid-cols-2 gap-3">
-        <li v-for="w in ledger.activeWallets" :key="w.wallet_id" class="card">
-          <p class="truncate text-xs font-medium text-ink-600">{{ w.name }}</p>
-          <p
-            class="tabular mt-1 text-lg font-bold"
-            :class="w.balance < 0 ? 'text-flame-600' : 'text-ink-900'"
-          >
-            {{ formatMoney(w.balance, w.balance_currency) }}
-          </p>
-          <p class="tabular text-xs text-ink-400">
-            已用 {{ formatMoney(w.spent, w.balance_currency) }}
-          </p>
-        </li>
-      </ul>
-    </section>
-
-    <!-- 悠遊付回饋 -->
-    <RebateCard />
-
-    <!-- 記一筆 -->
-    <section>
-      <h2 class="mb-2 px-1 text-sm font-semibold text-ink-800">記一筆</h2>
-      <EntryForm />
-    </section>
-
-    <!-- 最近紀錄 -->
-    <section>
+    <!-- 最近紀錄：記完馬上確認有沒有記錯 -->
+    <section class="pt-2">
       <div class="mb-2 flex items-baseline justify-between px-1">
         <h2 class="text-sm font-semibold text-ink-800">最近紀錄</h2>
-        <router-link class="text-xs text-brand-600" :to="{ name: 'records' }">看全部</router-link>
+        <router-link class="text-xs text-brand-600" :to="{ name: 'records' }">看全部 ›</router-link>
       </div>
-      <TransactionList :items="recent" empty-text="還沒有紀錄，從上面記第一筆吧" />
+      <TransactionList :items="recent" empty-text="還沒有紀錄，輸入金額記第一筆吧" />
     </section>
   </div>
 </template>

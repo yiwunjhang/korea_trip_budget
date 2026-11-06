@@ -12,6 +12,12 @@ const router = createRouter({
       meta: { requiresUser: true },
     },
     {
+      path: '/overview',
+      name: 'overview',
+      component: () => import('../views/OverviewView.vue'),
+      meta: { requiresUser: true },
+    },
+    {
       path: '/records',
       name: 'records',
       component: () => import('../views/RecordsView.vue'),
