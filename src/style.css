@@ -1,0 +1,101 @@
+@import 'tailwindcss';
+
+/* =====================================================================
+   設計系統：靛藍 × 朱紅（韓國國旗的配色）＋ 冷調白底
+   手機單手操作優先：大按鈕、底部導覽、數字用等寬字顯示。
+   ===================================================================== */
+
+@theme {
+  --color-canvas: #f5f7fb;
+
+  --color-ink-900: #16202e;
+  --color-ink-800: #26344a;
+  --color-ink-600: #5b6b82;
+  --color-ink-400: #94a2b6;
+  --color-line: #e3e8f0;
+
+  /* 主色：靛藍 */
+  --color-brand-50: #eef3ff;
+  --color-brand-100: #dde7ff;
+  --color-brand-200: #c2d1fb;
+  --color-brand-500: #3b5bdb;
+  --color-brand-600: #2f49b2;
+  --color-brand-700: #24398c;
+
+  /* 強調：朱紅（超支、扣款） */
+  --color-flame-50: #fff1f0;
+  --color-flame-100: #ffe0dd;
+  --color-flame-500: #e03131;
+  --color-flame-600: #c02626;
+
+  /* 正向：剩餘、退款 */
+  --color-mint-50: #eafaf3;
+  --color-mint-500: #0ca678;
+  --color-mint-600: #099268;
+
+  --font-sans: 'Noto Sans TC', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+html {
+  background-color: var(--color-canvas);
+}
+
+body {
+  margin: 0;
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 金額一律等寬，不會因為位數不同跳動 */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 可重複使用的小元件 ---------- */
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-white p-4 shadow-[0_1px_2px_rgba(22,32,46,0.04)];
+  }
+
+  /* 基礎 button 樣式：變體共用同一組 @apply，避免 @apply 自訂 class */
+  .btn,
+  .btn-primary,
+  .btn-ghost,
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-1 rounded-xl px-4 py-2.5
+      text-sm font-medium transition active:scale-[0.98] disabled:opacity-50
+      disabled:active:scale-100;
+  }
+
+  .btn-primary {
+    @apply bg-brand-500 text-white hover:bg-brand-600;
+  }
+
+  .btn-ghost {
+    @apply border border-line bg-white text-ink-800 hover:bg-brand-50;
+  }
+
+  .btn-danger {
+    @apply border border-flame-100 bg-flame-50 text-flame-600 hover:bg-flame-100;
+  }
+
+  .field {
+    @apply w-full rounded-xl border border-line bg-white px-3 py-2.5 text-base
+      text-ink-900 outline-none transition placeholder:text-ink-400
+      focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+  }
+
+  .label {
+    @apply mb-1 block text-xs font-medium text-ink-600;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-line bg-white
+      px-3 py-1.5 text-sm text-ink-800 transition;
+  }
+
+  .chip-on {
+    @apply border-brand-500 bg-brand-50 text-brand-700;
+  }
+}
