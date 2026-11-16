@@ -213,9 +213,9 @@ const updatedAt = computed(() => {
       </p>
 
       <template v-if="days.length">
-        <!-- 天數切換：固定在上方，今天有標記 -->
+        <!-- 天數切換：固定在上方，今天有標記。手機左右滑；電腦版排成格子、不用捲 -->
         <nav
-          class="glass sticky top-[3.75rem] z-10 -mx-1 flex gap-1.5 overflow-x-auto p-1.5"
+          class="glass sticky top-[3.75rem] z-10 -mx-1 flex gap-1.5 overflow-x-auto p-1.5 sm:grid sm:grid-cols-[repeat(auto-fill,minmax(4.75rem,1fr))] sm:overflow-visible"
           aria-label="選擇天數"
         >
           <button
@@ -223,7 +223,7 @@ const updatedAt = computed(() => {
             :key="d.id"
             :ref="(el) => (pillRefs[d.id] = el as HTMLElement | null)"
             type="button"
-            class="relative flex w-[4.75rem] shrink-0 flex-col items-center rounded-xl px-1 py-1.5 transition"
+            class="relative flex w-[4.75rem] shrink-0 flex-col sm:w-auto items-center rounded-xl px-1 py-1.5 transition"
             :class="
               d.id === selectedId
                 ? 'bg-linear-to-br from-brand-400 to-brand-500 text-ink-900 shadow-sm'
