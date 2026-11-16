@@ -40,7 +40,14 @@ export const useItineraryStore = defineStore('itinerary', () => {
   const loading = ref(false)
   const error = ref('')
 
-  const url = computed(() => ledger.settings?.itinerary_url?.trim() ?? '')
+  /**
+   * 分享連結帶來的 Notion 網址（#/itinerary?src=...）。
+   * 沒登入的人看不到別人設定裡的連結，所以公開分享時行程來源放在網址上。
+   */
+  const sharedUrl = ref('')
+  /** 目前 data 是哪個連結讀來的 */
+  let dataUrl = ''
+  const url = computed(() => sharedUrl.value || (ledger.settings?.itinerary_url?.trim() ?? ''))
   const days = computed(() => data.value?.days ?? [])
 
   function dayByDate(date: string): ItineraryDay | undefined {
@@ -69,7 +76,14 @@ export const useItineraryStore = defineStore('itinerary', () => {
   async function load(force = false) {
     if (!url.value) {
       data.value = null
+      dataUrl = ''
       return
+    }
+    // 換了行程來源（例如打開別人分享的連結）就先清掉舊的，不要顯示錯的行程
+    if (dataUrl !== url.value) {
+      data.value = null
+      error.value = ''
+      dataUrl = url.value
     }
     const cached = readCache()
     if (cached && cached.url === url.value && !data.value) data.value = cached.data
@@ -96,5 +110,5 @@ export const useItineraryStore = defineStore('itinerary', () => {
     }
   }
 
-  return { data, days, loading, error, url, dayByDate, defaultDay, upcomingDay, load }
+  return { data, days, loading, error, url, sharedUrl, dayByDate, defaultDay, upcomingDay, load }
 })

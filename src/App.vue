@@ -14,7 +14,9 @@ const session = useSessionStore()
 const ledger = useLedgerStore()
 
 const showNav = computed(() => session.signedIn() && route.name !== 'login')
-const title = computed(() => ledger.settings?.title || '韓國旅行記帳')
+/** 沒登入看公開的行程頁：顯示簡單的標題列（登入按鈕），沒有底部導覽 */
+const showPublicHeader = computed(() => !session.signedIn() && route.meta.public === true)
+const title = computed(() => ledger.settings?.title || (showPublicHeader.value ? '韓國旅行行程' : '韓國旅行記帳'))
 
 /** 登入後載入整本帳；新帳號則先建立預設錢包與分類 */
 async function load() {
@@ -44,7 +46,7 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
     <GinkgoBackdrop />
 
     <header
-      v-if="showNav"
+      v-if="showNav || showPublicHeader"
       class="sticky top-0 z-10 border-b border-white/60 bg-white/35 px-4 py-3 backdrop-blur-xl backdrop-saturate-150"
     >
       <div class="mx-auto flex max-w-xl items-center justify-between">
@@ -52,7 +54,14 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
           <Leaf :size="18" :stroke-width="2" class="text-brand-500" aria-hidden="true" />
           {{ title }}
         </h1>
-        <div class="flex items-center gap-2">
+        <router-link
+          v-if="showPublicHeader"
+          :to="{ name: 'login' }"
+          class="rounded-full bg-white/70 px-3 py-1.5 text-xs font-medium text-brand-700"
+        >
+          登入記帳
+        </router-link>
+        <div v-else class="flex items-center gap-2">
           <span v-if="ledger.loading" class="text-xs text-ink-400">同步中…</span>
           <router-link
             :to="{ name: 'settings' }"

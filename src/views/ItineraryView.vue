@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ChevronLeft,
@@ -9,10 +9,13 @@ import {
   PenLine,
   RefreshCw,
   Settings,
+  Share2,
 } from 'lucide-vue-next'
 import type { ItineraryDay, ItineraryStop } from '../db/api'
 import { seoulToday, useItineraryStore } from '../stores/itinerary'
 import { useLedgerStore } from '../stores/ledger'
+import { useSessionStore } from '../stores/session'
+import { alertError, toastSaved } from '../utils/alert'
 import { isDailyCategory } from '../utils/categories'
 import { dateParts, dayLabel, guessCategory, shortStopTitle } from '../utils/itinerary'
 import { formatMoney } from '../utils/money'
@@ -22,13 +25,45 @@ import ImageStrip from '../components/ImageStrip.vue'
  * 行程頁：上方一排天數（Day N／日期／地點，今天有標記），
  * 內容可以左右滑換天，底部也有「前一天／後一天」。
  * 每一站都能開地圖、直接「記一筆」（跳回記帳並帶入品項）。
+ *
+ * 這頁是公開的：不用登入，用分享連結（?src=Notion 公開連結）就能看行程；
+ * 「記一筆」「這天花了多少」等記帳功能只有登入後才顯示。
  */
 const itinerary = useItineraryStore()
 const ledger = useLedgerStore()
 const route = useRoute()
 const router = useRouter()
 
-onMounted(() => itinerary.load())
+const session = useSessionStore()
+const signedIn = computed(() => session.signedIn())
+
+/** 分享連結帶的行程來源；沒帶就用自己設定裡的 Notion 連結 */
+const srcFromRoute = computed(() => (typeof route.query.src === 'string' ? route.query.src : ''))
+watch(
+  srcFromRoute,
+  (src) => {
+    itinerary.sharedUrl = src
+    itinerary.load()
+  },
+  { immediate: true },
+)
+
+/** 分享：複製（或用手機分享選單送出）不用登入就能看的行程連結 */
+async function share() {
+  const link = `${location.origin}${location.pathname}#/itinerary?src=${encodeURIComponent(itinerary.url)}`
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: '我們的韓國行程', url: link })
+      return
+    }
+    await navigator.clipboard.writeText(link)
+    toastSaved('分享連結已複製', '不用登入就能看行程')
+  } catch (e) {
+    // 使用者自己關掉分享選單不算錯誤
+    if (e instanceof DOMException && e.name === 'AbortError') return
+    alertError(link, '請手動複製這個連結')
+  }
+}
 
 const days = computed(() => itinerary.days)
 const today = seoulToday()
@@ -54,7 +89,8 @@ const nextDay = computed(() => (index.value >= 0 ? days.value[index.value + 1] :
 function select(d: ItineraryDay | undefined) {
   if (!d) return
   selectedId.value = d.id
-  router.replace({ query: d.date ? { day: d.date } : {} })
+  // 保留分享連結的行程來源（src），只換天數
+  router.replace({ query: { ...(srcFromRoute.value ? { src: srcFromRoute.value } : {}), ...(d.date ? { day: d.date } : {}) } })
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -136,13 +172,20 @@ const updatedAt = computed(() => {
     <!-- 還沒設定 Notion 連結 -->
     <section v-if="!itinerary.url" class="card space-y-3 text-center">
       <MapPin :size="28" class="mx-auto text-brand-500" />
-      <p class="text-sm font-semibold text-ink-900">還沒連結 Notion 行程</p>
-      <p class="text-xs leading-relaxed text-ink-600">
-        在 Notion 把行程資料庫「發佈到網路」，複製 notion.site 連結，貼到設定頁就能在這裡看行程。
-      </p>
-      <router-link :to="{ name: 'settings' }" class="btn-primary w-full">
-        <Settings :size="16" /> 去設定
-      </router-link>
+      <template v-if="signedIn">
+        <p class="text-sm font-semibold text-ink-900">還沒連結 Notion 行程</p>
+        <p class="text-xs leading-relaxed text-ink-600">
+          在 Notion 把行程資料庫「發佈到網路」，複製 notion.site 連結，貼到設定頁就能在這裡看行程。
+        </p>
+        <router-link :to="{ name: 'settings' }" class="btn-primary w-full">
+          <Settings :size="16" /> 去設定
+        </router-link>
+      </template>
+      <template v-else>
+        <p class="text-sm font-semibold text-ink-900">這個行程連結不完整</p>
+        <p class="text-xs leading-relaxed text-ink-600">請向分享給你的人要完整的行程連結；或登入看自己的行程。</p>
+        <router-link :to="{ name: 'login' }" class="btn-primary w-full">登入</router-link>
+      </template>
     </section>
 
     <template v-else>
@@ -216,7 +259,7 @@ const updatedAt = computed(() => {
                 Notion <ExternalLink :size="12" />
               </a>
             </div>
-            <p v-if="daySpending" class="tabular mt-2 text-xs text-ink-600">
+            <p v-if="signedIn && daySpending" class="tabular mt-2 text-xs text-ink-600">
               這天花了
               <b class="text-sm text-ink-900">{{ formatMoney(daySpending.krw, 'KRW') }}</b>
               （{{ daySpending.count }} 筆，不含機票、住宿）
@@ -285,7 +328,7 @@ const updatedAt = computed(() => {
                   >
                     <MapPin :size="13" class="text-mint-600" /> 地圖
                   </a>
-                  <button type="button" class="chip chip-on text-xs" @click="record(stop)">
+                  <button v-if="signedIn" type="button" class="chip chip-on text-xs" @click="record(stop)">
                     <PenLine :size="13" /> 記一筆
                   </button>
                   <a
@@ -328,6 +371,11 @@ const updatedAt = computed(() => {
           <p class="text-center text-xs text-ink-400">也可以左右滑動切換天數</p>
         </div>
       </template>
+
+      <!-- 分享：給家人朋友看行程，不用登入 -->
+      <button v-if="signedIn && days.length" type="button" class="btn-ghost w-full" @click="share">
+        <Share2 :size="16" /> 分享行程（不用登入就能看）
+      </button>
 
       <div class="flex items-center justify-center gap-2 text-xs text-ink-400">
         <span v-if="updatedAt">行程更新於 {{ updatedAt }}</span>

@@ -15,7 +15,8 @@ const router = createRouter({
       path: '/itinerary',
       name: 'itinerary',
       component: () => import('../views/ItineraryView.vue'),
-      meta: { requiresUser: true },
+      // 行程是公開頁：不用登入就能看（用分享連結 ?src=Notion 連結）；記帳功能才要登入
+      meta: { public: true },
     },
     {
       path: '/overview',
