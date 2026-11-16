@@ -13,6 +13,8 @@ export const useGroupStore = defineStore('group', () => {
   const members = ref<TripMember[]>([])
   const spending = ref<GroupSpendingRow[]>([])
   const loading = ref(false)
+  /** 至少載入過一次（行程要先知道有沒有群組，才知道用誰的連結） */
+  const loaded = ref(false)
   const error = ref('')
 
   async function run(task: () => Promise<void>): Promise<boolean> {
@@ -35,6 +37,7 @@ export const useGroupStore = defineStore('group', () => {
       members.value = mine?.members ?? []
       spending.value = mine ? await api.getGroupSpending(mine.group.id) : []
     })
+    loaded.value = true
     loading.value = false
   }
 
@@ -66,11 +69,21 @@ export const useGroupStore = defineStore('group', () => {
     return ok
   }
 
+  /** 只有建立群組的人能設定；成員一起看這份行程 */
+  async function setItineraryUrl(url: string) {
+    if (!group.value) return false
+    const id = group.value.id
+    const ok = await run(() => api.setGroupItinerary(id, url))
+    if (ok && group.value?.id === id) group.value = { ...group.value, itinerary_url: url }
+    return ok
+  }
+
   function reset() {
     group.value = null
     members.value = []
     spending.value = []
+    loaded.value = false
   }
 
-  return { group, members, spending, loading, error, refresh, create, join, rename, leave, reset }
+  return { group, members, spending, loading, loaded, error, refresh, create, join, rename, leave, setItineraryUrl, reset }
 })

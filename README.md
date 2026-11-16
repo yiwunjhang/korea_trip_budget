@@ -84,7 +84,8 @@ Notion 不允許網頁直接讀它的資料，所以由 Supabase Edge Function `
      保持 *Enforce JWT verification* 開啟（只有登入的人能呼叫）。
    - **CLI**：`npx supabase functions deploy notion-itinerary --project-ref <你的 project ref>`
 3. SQL Editor 重跑 `supabase/schema.sql`（新增 `trip_settings.itinerary_url` 欄位）。
-4. App → 設定 → 貼上 Notion 連結 → 儲存設定。旅伴也要在自己的設定貼一次。
+4. App → 設定 → 貼上 Notion 連結 → 儲存設定。
+   有旅伴群組時，行程由**建立群組的人**設定，所有成員自動看同一份（成員的欄位是唯讀）。
 
 行程讀過一次會存在手機裡，沒網路也看得到；有網路時每 15 分鐘最多更新一次，
 行程頁底部也可以手動「從 Notion 更新」。

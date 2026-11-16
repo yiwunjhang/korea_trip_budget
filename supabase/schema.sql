@@ -194,6 +194,36 @@ create table if not exists public.trip_members (
 
 create index if not exists trip_members_user_idx on public.trip_members (user_id);
 
+-- 群組共用的 Notion 行程：由建立群組的人設定，成員都看同一份（避免各自貼不同連結）
+alter table public.trip_groups add column if not exists itinerary_url text not null default '';
+-- 舊資料：沿用建立者自己設定裡的連結
+update public.trip_groups g
+set itinerary_url = s.itinerary_url
+from public.trip_settings s
+where s.user_id = g.created_by and g.itinerary_url = '' and s.itinerary_url <> '';
+
+-- 成員可以改群組名稱，但行程連結、建立者、邀請碼只有建立者能動（SQL Editor 不受限）
+create or replace function public.trip_groups_guard()
+returns trigger
+language plpgsql
+set search_path = public
+as $fn$
+begin
+  if auth.uid() is not null and auth.uid() is distinct from old.created_by and (
+    new.itinerary_url is distinct from old.itinerary_url
+    or new.created_by is distinct from old.created_by
+    or new.invite_code is distinct from old.invite_code
+  ) then
+    raise exception '只有建立群組的人可以設定行程連結';
+  end if;
+  return new;
+end
+$fn$;
+
+drop trigger if exists trip_groups_guard on public.trip_groups;
+create trigger trip_groups_guard before update on public.trip_groups
+  for each row execute function public.trip_groups_guard();
+
 -- 是否為該群組成員。security definer 才不會在 trip_members 的 policy 裡自己查自己而無限遞迴。
 create or replace function public.is_group_member(p_group uuid)
 returns boolean
@@ -254,8 +284,13 @@ begin
     raise exception '請輸入你的名字';
   end if;
 
-  insert into public.trip_groups (name, created_by)
-  values (coalesce(nullif(trim(p_name), ''), '韓國旅行'), v_uid)
+  -- 群組行程預設沿用建立者自己設定的 Notion 連結
+  insert into public.trip_groups (name, created_by, itinerary_url)
+  values (
+    coalesce(nullif(trim(p_name), ''), '韓國旅行'),
+    v_uid,
+    coalesce((select s.itinerary_url from public.trip_settings s where s.user_id = v_uid), '')
+  )
   returning id into v_group;
 
   insert into public.trip_members (group_id, user_id, display_name)

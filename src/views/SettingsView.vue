@@ -72,6 +72,15 @@ async function leaveGroup() {
   else alertError(group.error || '請稍後再試', '退出失敗')
 }
 
+/* ---------- Notion 行程：有群組就由建立群組的人設定，大家看同一份 ---------- */
+const inGroup = computed(() => Boolean(group.group))
+const isOwner = computed(() => group.group?.created_by === session.userId)
+const ownerName = computed(
+  () => group.members.find((m) => m.user_id === group.group?.created_by)?.display_name ?? '建立群組的人',
+)
+/** 成員：只能看，不能改 */
+const itineraryLocked = computed(() => inGroup.value && !isOwner.value)
+
 const form = reactive({
   title: '',
   start_date: '',
@@ -94,11 +103,29 @@ watch(
     form.budget_twd = s.budget_twd
     form.krw_per_twd = s.krw_per_twd
     form.itinerary_url = s.itinerary_url
+    if (group.group?.itinerary_url) form.itinerary_url = group.group.itinerary_url
+  },
+  { immediate: true },
+)
+
+/** 群組載入後，行程連結欄位顯示群組共用的那份 */
+watch(
+  () => group.group?.itinerary_url,
+  (url) => {
+    if (url) form.itinerary_url = url
   },
   { immediate: true },
 )
 
 async function save() {
+  const url = form.itinerary_url.trim()
+  // 建立群組的人：同時存成群組共用的行程
+  if (inGroup.value && isOwner.value && url !== group.group?.itinerary_url) {
+    if (!(await group.setItineraryUrl(url))) {
+      alertError(group.error || '請稍後再試', '行程連結儲存失敗')
+      return
+    }
+  }
   const ok = await ledger.saveSettings({
     title: form.title.trim() || '韓國旅行',
     start_date: form.start_date || null,
@@ -106,7 +133,8 @@ async function save() {
     budget_krw: form.budget_krw || 0,
     budget_twd: form.budget_twd || 0,
     krw_per_twd: form.krw_per_twd > 0 ? form.krw_per_twd : 43,
-    itinerary_url: form.itinerary_url.trim(),
+    // 成員改不了群組行程，自己這欄維持原樣
+    itinerary_url: itineraryLocked.value ? (ledger.settings?.itinerary_url ?? '') : url,
   })
   if (ok) {
     alertSaved('設定已儲存')
@@ -150,12 +178,22 @@ async function logout() {
           id="s-itinerary"
           v-model="form.itinerary_url"
           class="field text-sm"
+          :class="{ 'opacity-70': itineraryLocked }"
+          :readonly="itineraryLocked"
           type="url"
           inputmode="url"
           placeholder="https://xxx.notion.site/…"
         />
         <p class="mt-1 text-xs text-ink-400">
-          Notion 行程資料庫 → Share → Publish（發佈到網路）→ 複製連結貼上。旅伴也要在自己的設定貼一次。
+          <template v-if="itineraryLocked">
+            群組共用的行程，由 {{ ownerName }} 設定，大家看同一份。
+          </template>
+          <template v-else-if="inGroup">
+            Notion → Share → Publish（發佈到網路）→ 複製連結貼上。你是建立群組的人，這份行程會同步給所有旅伴。
+          </template>
+          <template v-else>
+            Notion → Share → Publish（發佈到網路）→ 複製連結貼上。加入旅伴群組後，會改用建立群組的人設定的行程。
+          </template>
           <template v-if="itinerary.error && form.itinerary_url">
             <br /><span class="text-flame-600">讀取失敗：{{ itinerary.error }}</span>
           </template>

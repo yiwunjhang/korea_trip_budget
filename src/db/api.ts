@@ -303,6 +303,8 @@ export interface TripGroup {
   name: string
   invite_code: string
   created_by: string
+  /** 群組共用的 Notion 行程連結（只有建立者能改） */
+  itinerary_url: string
 }
 
 export interface TripMember {
@@ -343,6 +345,7 @@ export async function getMyGroup(): Promise<{ group: TripGroup; members: TripMem
       name: String(row.name),
       invite_code: String(row.invite_code),
       created_by: String(row.created_by),
+      itinerary_url: String(row.itinerary_url ?? ''),
     },
     members: (members ?? []).map((m) => ({
       group_id: String(m.group_id),
@@ -350,6 +353,11 @@ export async function getMyGroup(): Promise<{ group: TripGroup; members: TripMem
       display_name: String(m.display_name),
     })),
   }
+}
+
+/** 設定群組共用的行程連結（資料庫只允許建立群組的人改） */
+export async function setGroupItinerary(groupId: string, url: string): Promise<void> {
+  unwrap(await supabase.from('trip_groups').update({ itinerary_url: url }).eq('id', groupId))
 }
 
 export async function createGroup(name: string, displayName: string): Promise<string> {

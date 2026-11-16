@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import * as api from '../db/api'
 import type { Itinerary, ItineraryDay } from '../db/api'
+import { useGroupStore } from './group'
 import { useLedgerStore } from './ledger'
 
 /**
@@ -35,6 +36,7 @@ export function seoulToday(): string {
 
 export const useItineraryStore = defineStore('itinerary', () => {
   const ledger = useLedgerStore()
+  const group = useGroupStore()
 
   const data = ref<Itinerary | null>(null)
   const loading = ref(false)
@@ -47,7 +49,14 @@ export const useItineraryStore = defineStore('itinerary', () => {
   const sharedUrl = ref('')
   /** 目前 data 是哪個連結讀來的 */
   let dataUrl = ''
-  const url = computed(() => sharedUrl.value || (ledger.settings?.itinerary_url?.trim() ?? ''))
+  /**
+   * 用哪份行程：分享連結 ＞ 群組共用（建立群組的人設定）＞ 自己設定的。
+   * 有群組就大家看同一份，記帳的日期、分類才不會對不上。
+   */
+  const groupUrl = computed(() => group.group?.itinerary_url?.trim() ?? '')
+  const url = computed(
+    () => sharedUrl.value || groupUrl.value || (ledger.settings?.itinerary_url?.trim() ?? ''),
+  )
   const days = computed(() => data.value?.days ?? [])
 
   function dayByDate(date: string): ItineraryDay | undefined {
@@ -110,5 +119,10 @@ export const useItineraryStore = defineStore('itinerary', () => {
     }
   }
 
-  return { data, days, loading, error, url, sharedUrl, dayByDate, defaultDay, upcomingDay, load }
+  // 行程來源換了（例如群組資料晚一步載入、建立者改了連結）就重讀
+  watch(url, () => {
+    if (dataUrl || data.value) load()
+  })
+
+  return { data, days, loading, error, url, groupUrl, sharedUrl, dayByDate, defaultDay, upcomingDay, load }
 })

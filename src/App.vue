@@ -7,6 +7,7 @@ import GinkgoBackdrop from './components/GinkgoBackdrop.vue'
 import { useSessionStore } from './stores/session'
 import { useLedgerStore } from './stores/ledger'
 import { useItineraryStore } from './stores/itinerary'
+import { useGroupStore } from './stores/group'
 import { supabaseConfigured } from './supabase'
 
 const route = useRoute()
@@ -21,9 +22,10 @@ const title = computed(() => ledger.settings?.title || (showPublicHeader.value ?
 /** 登入後載入整本帳；新帳號則先建立預設錢包與分類 */
 async function load() {
   if (!session.signedIn()) return
-  await ledger.refresh()
+  const group = useGroupStore()
+  await Promise.all([ledger.refresh(), group.refresh()])
   await ledger.ensureSeeded()
-  // 行程在背景載入（先用手機裡的快取），不擋記帳畫面
+  // 行程在背景載入（先用手機裡的快取），不擋記帳畫面；有群組就用群組共用的行程
   useItineraryStore().load()
 }
 
