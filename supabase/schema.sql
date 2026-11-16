@@ -611,3 +611,21 @@ grant execute on function
   public.is_group_member(uuid),
   public.fixed_categories()
   to authenticated;
+
+-- ---------- 行程備份：Notion 關閉發佈後，行程與圖片照樣看得到 ----------
+-- 由 Edge Function notion-itinerary（service role）讀寫；一般使用者讀不到這張表。
+create table if not exists public.itinerary_snapshots (
+  url text primary key,
+  data jsonb not null,
+  -- 已備份的圖片：圖片 key → { thumb, full } 的 Storage 網址
+  images jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table public.itinerary_snapshots enable row level security;
+revoke all on public.itinerary_snapshots from anon, authenticated;
+grant select, insert, update, delete on public.itinerary_snapshots to service_role;
+
+-- 圖片放在公開的 Storage bucket（網址任何人都能看，跟 Notion 公開頁一樣）
+insert into storage.buckets (id, name, public)
+values ('itinerary-images', 'itinerary-images', true)
+on conflict (id) do update set public = true;

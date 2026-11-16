@@ -524,6 +524,8 @@ export interface ItineraryDay {
 export interface Itinerary {
   days: ItineraryDay[]
   fetchedAt: string
+  /** Notion 讀不到（例如關閉發佈），回的是最後一次的備份 */
+  fromBackup?: boolean
 }
 
 export async function fetchItinerary(url: string): Promise<Itinerary> {

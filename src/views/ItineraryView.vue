@@ -199,6 +199,14 @@ const updatedAt = computed(() => {
         <button type="button" class="ml-1 font-medium text-brand-600" @click="itinerary.load(true)">再試一次</button>
       </div>
 
+      <!-- Notion 關閉發佈或連不上：顯示的是備份 -->
+      <p
+        v-else-if="itinerary.data?.fromBackup"
+        class="rounded-xl border border-white/80 bg-white/60 px-3 py-2 text-xs text-ink-600"
+      >
+        Notion 目前讀不到（可能已關閉發佈），先顯示 {{ updatedAt }} 備份的行程。
+      </p>
+
       <p v-if="!days.length && itinerary.loading" class="card text-center text-sm text-ink-400">讀取行程中…</p>
       <p v-else-if="!days.length && !itinerary.error" class="card text-center text-sm text-ink-400">
         這個 Notion 資料庫裡還沒有行程

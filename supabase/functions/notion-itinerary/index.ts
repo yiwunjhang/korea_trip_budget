@@ -6,7 +6,8 @@
 // 本身在用的讀取方式（不是官方 API），不需要任何 Notion 金鑰。
 //
 // 呼叫：POST { url: "https://xxx.notion.site/<資料庫頁面id>?v=<view id>" }
-// 只接受 *.notion.site 的網址，且要登入的使用者才能呼叫（Supabase 預設驗 JWT）。
+// 只接受 *.notion.site 的網址。行程是公開頁，用 publishable／anon key 就能呼叫。
+// Notion 關閉發佈後會改回最後一次的備份（見下方「備份」）。
 //
 // 預期的 Notion 結構（照目前的行程）：
 //   資料庫每一列是一天：標題像「明洞｜Day2（日）」、有一個日期欄位
@@ -337,16 +338,203 @@ export async function buildItinerary(rawUrl: string): Promise<Itinerary> {
   return { days, fetchedAt: new Date().toISOString() }
 }
 
+// =====================================================================
+// 備份：Notion 關閉發佈（或暫時連不上）時，改回最後一次讀到的行程。
+//   - 每次讀成功就把整份行程存到 itinerary_snapshots 表
+//   - 圖片複製到 Supabase Storage（itinerary-images），之後一律用備份的圖片網址，
+//     Notion 那邊的圖片關掉也不影響；已經備份過的圖片不會重抓
+//   - 只備份「有人貼在設定裡」的連結，避免被拿去塞任意頁面
+// 還沒跑建立備份表的 SQL 時，這段會靜靜跳過，行程照常顯示。
+// =====================================================================
+
+const BUCKET = 'itinerary-images'
+
+interface MirroredImage {
+  thumb: string
+  full: string
+}
+
+interface Backup {
+  data: Itinerary
+  images: Record<string, MirroredImage>
+}
+
+export type BackupStore = ReturnType<typeof backupStore>
+
+export function backupStore(baseUrl: string, key: string, fetchImpl: typeof fetch = fetch) {
+  // 舊版 service_role 是 JWT，要放 Authorization；新版 sb_secret_ 只放 apikey
+  const auth: Record<string, string> = { apikey: key, ...(key.startsWith('eyJ') ? { authorization: `Bearer ${key}` } : {}) }
+  const rest = `${baseUrl}/rest/v1`
+  const check = async (res: Response) => {
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+    return res
+  }
+  return {
+    async isRegistered(url: string): Promise<boolean> {
+      const res = await check(
+        await fetchImpl(`${rest}/trip_settings?select=user_id&limit=1&itinerary_url=eq.${encodeURIComponent(url)}`, {
+          headers: auth,
+        }),
+      )
+      return (await res.json()).length > 0
+    },
+    async load(url: string): Promise<Backup | null> {
+      const res = await check(
+        await fetchImpl(`${rest}/itinerary_snapshots?select=data,images&url=eq.${encodeURIComponent(url)}`, {
+          headers: auth,
+        }),
+      )
+      return (await res.json())[0] ?? null
+    },
+    async save(url: string, data: Itinerary, images: Record<string, MirroredImage>) {
+      await check(
+        await fetchImpl(`${rest}/itinerary_snapshots`, {
+          method: 'POST',
+          headers: { ...auth, 'content-type': 'application/json', prefer: 'resolution=merge-duplicates' },
+          body: JSON.stringify({ url, data, images, updated_at: new Date().toISOString() }),
+        }),
+      )
+    },
+    async upload(path: string, body: ArrayBuffer, contentType: string): Promise<string> {
+      await check(
+        await fetchImpl(`${baseUrl}/storage/v1/object/${BUCKET}/${path}`, {
+          method: 'POST',
+          headers: { ...auth, 'content-type': contentType, 'x-upsert': 'true', 'cache-control': 'max-age=31536000' },
+          body,
+        }),
+      )
+      return `${baseUrl}/storage/v1/object/public/${BUCKET}/${path}`
+    },
+  }
+}
+
+/** 同一張圖（同區塊、同來源）就是同一個 key；Notion 換了圖就會是新 key */
+async function imageKey(img: ItineraryImage): Promise<string> {
+  const base = img.full.replace(/&width=\d+$/, '')
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(base))
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32)
+}
+
+const EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/avif': 'avif',
+  'image/svg+xml': 'svg',
+}
+
+async function copyImage(store: BackupStore, src: string, name: string, fetchImpl: typeof fetch) {
+  const res = await fetchImpl(src, { signal: AbortSignal.timeout(20_000) })
+  if (!res.ok) throw new Error(`圖片 ${res.status}`)
+  const type = (res.headers.get('content-type') ?? '').split(';')[0].trim()
+  if (!type.startsWith('image/')) throw new Error(`不是圖片：${type}`)
+  return store.upload(`${name}.${EXT[type] ?? 'img'}`, await res.arrayBuffer(), type)
+}
+
+/**
+ * 把行程裡的圖片換成備份的網址（會直接改 itinerary）。
+ * 還沒備份過的圖片先複製一份；複製失敗的那張先維持 Notion 網址，下次再試。
+ */
+export async function mirrorImages(
+  itinerary: Itinerary,
+  prev: Record<string, MirroredImage>,
+  store: BackupStore,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Record<string, MirroredImage>> {
+  const all = itinerary.days.flatMap((d) => [...d.noteImages, ...d.stops.flatMap((s) => s.images)])
+  const keys = await Promise.all(all.map(imageKey))
+  const map: Record<string, MirroredImage> = {}
+  const todo = new Map<string, ItineraryImage>()
+  all.forEach((img, i) => {
+    const key = keys[i]
+    if (prev[key]) map[key] = prev[key]
+    else todo.set(key, img)
+  })
+
+  // 一次最多 6 張同時複製
+  const queue = [...todo.entries()]
+  const worker = async () => {
+    for (let item = queue.shift(); item; item = queue.shift()) {
+      const [key, img] = item
+      try {
+        const [thumb, full] = await Promise.all([
+          copyImage(store, img.thumb, `${key}-600`, fetchImpl),
+          copyImage(store, img.full, `${key}-1600`, fetchImpl),
+        ])
+        map[key] = { thumb, full }
+      } catch (e) {
+        console.warn('圖片備份失敗', img.full, e)
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: 6 }, worker))
+
+  all.forEach((img, i) => {
+    const m = map[keys[i]]
+    if (m) {
+      img.thumb = m.thumb
+      img.full = m.full
+    }
+  })
+  return map
+}
+
+/**
+ * 讀行程：Notion 讀得到 → 回最新的並更新備份；讀不到 → 回備份（fromBackup: true）。
+ * 兩邊都沒有才丟錯誤。
+ */
+export async function getItinerary(
+  url: string,
+  store: BackupStore | null,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Itinerary & { fromBackup?: boolean }> {
+  let fresh: Itinerary
+  try {
+    fresh = await buildItinerary(url)
+  } catch (failure) {
+    if (store) {
+      const backup = await store.load(url).catch(() => null)
+      if (backup) return { ...backup.data, fromBackup: true }
+    }
+    throw failure
+  }
+  if (store) {
+    try {
+      if (await store.isRegistered(url)) {
+        const prev = await store.load(url)
+        const images = await mirrorImages(fresh, prev?.images ?? {}, store, fetchImpl)
+        await store.save(url, fresh, images)
+      }
+    } catch (e) {
+      // 備份表還沒建立之類的：不影響這次顯示
+      console.error('行程備份失敗', e)
+    }
+  }
+  return fresh
+}
+
 // ---------- Edge Function 進入點（本機 node 測試時不會執行） ----------
 // deno-lint-ignore no-explicit-any
 const DenoRef = (globalThis as any).Deno
 if (DenoRef?.serve) {
+  const env = (name: string) => DenoRef.env.get(name) ?? ''
+  const serviceKey = () => {
+    if (env('SUPABASE_SERVICE_ROLE_KEY')) return env('SUPABASE_SERVICE_ROLE_KEY')
+    try {
+      return JSON.parse(env('SUPABASE_SECRET_KEYS') || '{}').default ?? ''
+    } catch {
+      return ''
+    }
+  }
   DenoRef.serve(async (req: Request) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
     try {
       const { url } = await req.json()
-      if (typeof url !== 'string' || !url) throw new Error('缺少 Notion 連結')
-      const data = await buildItinerary(url)
+      if (typeof url !== 'string' || !url.trim()) throw new Error('缺少 Notion 連結')
+      const key = serviceKey()
+      const store = env('SUPABASE_URL') && key ? backupStore(env('SUPABASE_URL'), key) : null
+      const data = await getItinerary(url.trim(), store)
       return new Response(JSON.stringify(data), {
         headers: { ...cors, 'content-type': 'application/json; charset=utf-8' },
       })

@@ -89,6 +89,11 @@ Notion 不允許網頁直接讀它的資料，所以由 Supabase Edge Function `
 行程讀過一次會存在手機裡，沒網路也看得到；有網路時每 15 分鐘最多更新一次，
 行程頁底部也可以手動「從 Notion 更新」。
 
+**Notion 關閉發佈也不影響**：每次從 Notion 讀成功，函式會把整份行程備份到
+`itinerary_snapshots` 表、圖片複製到 Storage 的 `itinerary-images` bucket。
+之後 Notion 讀不到（關閉發佈、暫時連不上）就改顯示最後一次的備份，行程頁會註明「備份」。
+關閉發佈期間在 Notion 改的內容不會同步，重新發佈後下次讀取就會更新。
+
 ## 部署（GitHub Pages）
 
 `.github/workflows/deploy.yml` 會在推上 `main` 時自動建置部署。
