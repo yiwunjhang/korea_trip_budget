@@ -12,7 +12,8 @@ import { useLedgerStore } from './ledger'
 // 資料格式有變（例如加了圖片）就換版本號，舊的快取自動作廢
 const CACHE_KEY = 'korea-trip:itinerary:v2'
 
-function readCache(): { url: string; data: Itinerary } | null {
+/** checkedAt：這支手機最後一次問過伺服器的時間（備份的 fetchedAt 會停在 Notion 關閉前） */
+function readCache(): { url: string; data: Itinerary; checkedAt?: number } | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY)
     return raw ? JSON.parse(raw) : null
@@ -21,9 +22,9 @@ function readCache(): { url: string; data: Itinerary } | null {
   }
 }
 
-function writeCache(url: string, data: Itinerary) {
+function writeCache(url: string, data: Itinerary, checkedAt: number) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ url, data }))
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ url, data, checkedAt }))
   } catch {
     /* 私密模式或空間不足就算了，下次再抓 */
   }
@@ -49,6 +50,10 @@ export const useItineraryStore = defineStore('itinerary', () => {
   const sharedUrl = ref('')
   /** 目前 data 是哪個連結讀來的 */
   let dataUrl = ''
+  /** 最後一次成功問過伺服器的時間 */
+  let checkedAt = 0
+  /** 正在讀的連結（避免同一份重複送） */
+  let inflightUrl = ''
   /**
    * 用哪份行程：分享連結 ＞ 群組共用（建立群組的人設定）＞ 自己設定的。
    * 有群組就大家看同一份，記帳的日期、分類才不會對不上。
@@ -82,7 +87,7 @@ export const useItineraryStore = defineStore('itinerary', () => {
   })
 
   /** 讀行程：先用手機裡的快取，再去 Notion 抓最新的 */
-  async function load(force = false) {
+  async function load(force = false, isRetry = false) {
     if (!url.value) {
       data.value = null
       dataUrl = ''
@@ -93,30 +98,62 @@ export const useItineraryStore = defineStore('itinerary', () => {
       data.value = null
       error.value = ''
       dataUrl = url.value
+      checkedAt = 0
     }
+    // 同一份已經在讀了就不要重複送
+    if (inflightUrl === url.value && !force) return
     const cached = readCache()
-    if (cached && cached.url === url.value && !data.value) data.value = cached.data
+    if (cached && cached.url === url.value && !data.value) {
+      data.value = cached.data
+      checkedAt = cached.checkedAt ?? new Date(cached.data.fetchedAt).getTime()
+    }
     // 15 分鐘內抓過就不重抓（除非手動重新整理）。
     // 但如果存的是舊版函式回的資料（沒有圖片欄位），就算剛抓過也要重抓：
     // 先推前端、後部署函式時，手機會先存到一份沒有圖片的行程。
     const isCurrentFormat = (data.value?.days ?? []).every((d) => Array.isArray(d.noteImages))
-    const fresh =
-      data.value &&
-      isCurrentFormat &&
-      Date.now() - new Date(data.value.fetchedAt).getTime() < 15 * 60 * 1000
+    const fresh = data.value && isCurrentFormat && Date.now() - checkedAt < 15 * 60 * 1000
     if (fresh && !force) return
 
     loading.value = true
     error.value = ''
+    const requested = url.value
+    inflightUrl = requested
     try {
-      const result = await api.fetchItinerary(url.value)
+      const result = await api.fetchItinerary(requested)
+      // 讀的途中換了行程來源就丟掉這份
+      if (requested !== url.value) return
       data.value = result
-      writeCache(url.value, result)
+      checkedAt = Date.now()
+      writeCache(requested, result, checkedAt)
     } catch (e) {
+      if (requested !== url.value) return
+      // 手機切到背景（例如打開分享選單）時請求被中斷：不顯示錯誤，回到畫面再讀一次
+      if (e instanceof api.ItineraryNetworkError && document.visibilityState === 'hidden') {
+        retryWhenVisible()
+        return
+      }
+      // 剛從分享選單回來時，被中斷的請求可能晚一點才報錯：自動再試一次
+      if (e instanceof api.ItineraryNetworkError && !isRetry) {
+        inflightUrl = ''
+        setTimeout(() => load(true, true), 1500)
+        return
+      }
       error.value = e instanceof Error ? e.message : String(e)
     } finally {
-      loading.value = false
+      if (inflightUrl === requested) {
+        inflightUrl = ''
+        loading.value = false
+      }
     }
+  }
+
+  function retryWhenVisible() {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      document.removeEventListener('visibilitychange', onVisible)
+      load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
   }
 
   // 行程來源換了（例如群組資料晚一步載入、建立者改了連結）就重讀

@@ -536,18 +536,26 @@ export interface Itinerary {
   fromBackup?: boolean
 }
 
+/** 連線問題（不是行程本身有錯），通常重試就好 */
+export class ItineraryNetworkError extends Error {}
+
 export async function fetchItinerary(url: string): Promise<Itinerary> {
   const { data, error } = await supabase.functions.invoke('notion-itinerary', { body: { url } })
   if (error) {
-    // Edge Function 回 4xx 時，錯誤內容在 response body 裡
+    // 送不出去：網路斷了，或手機切到背景（例如開了分享選單）時請求被中斷
+    if (error.name === 'FunctionsFetchError' || error.name === 'FunctionsRelayError') {
+      throw new ItineraryNetworkError('連不上行程伺服器，請確認網路後再試')
+    }
+    // 函式回 4xx 時，錯誤內容在 response body 裡
+    const res = (error as { context?: Response }).context
     let message = error.message
     try {
-      const body = await (error as { context?: Response }).context?.json()
+      const body = await res?.clone().json()
       if (body?.error) message = body.error
     } catch {
       /* 讀不到 body 就用原本的訊息 */
     }
-    if (/Failed to send|not found|404/i.test(message)) {
+    if (res?.status === 404 && message === error.message) {
       message = '還沒部署 notion-itinerary 函式（見 README「Notion 行程」）'
     }
     throw new Error(message)
