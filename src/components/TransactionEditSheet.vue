@@ -300,7 +300,7 @@ async function remove() {
               v-model.number="form.rate"
               class="field tabular"
               type="number"
-              step="0.01"
+              step="any"
               min="0.01"
             />
           </div>

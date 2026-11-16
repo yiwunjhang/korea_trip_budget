@@ -420,7 +420,7 @@ async function submit() {
               v-model.number="rate"
               class="field tabular"
               type="number"
-              step="0.01"
+              step="any"
               min="0.01"
               @input="rateTouched = true"
             />

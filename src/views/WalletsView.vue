@@ -163,7 +163,7 @@ async function resetDefaults() {
             <input
               class="field tabular"
               type="number"
-              step="0.01"
+              step="any"
               :value="w.opening_balance"
               @change="saveOpening(w.wallet_id, Number(($event.target as HTMLInputElement).value))"
             />
@@ -173,7 +173,7 @@ async function resetDefaults() {
             <input
               class="field tabular"
               type="number"
-              step="0.01"
+              step="any"
               placeholder="沿用預設"
               :value="w.default_krw_per_twd ?? ''"
               @change="saveRate(w.wallet_id, ($event.target as HTMLInputElement).value)"
@@ -218,7 +218,7 @@ async function resetDefaults() {
           <input
             class="field tabular"
             type="number"
-            step="0.01"
+            step="any"
             placeholder="沿用預設"
             :value="w.default_krw_per_twd ?? ''"
             @change="saveRate(w.wallet_id, ($event.target as HTMLInputElement).value)"
@@ -268,7 +268,7 @@ async function resetDefaults() {
               v-model.number="draft.default_krw_per_twd"
               class="field tabular"
               type="number"
-              step="0.01"
+              step="any"
               placeholder="沿用預設"
             />
           </div>
@@ -282,7 +282,7 @@ async function resetDefaults() {
               v-model.number="draft.opening_balance"
               class="field tabular"
               type="number"
-              step="0.01"
+              step="any"
             />
           </div>
           <div>
@@ -292,7 +292,7 @@ async function resetDefaults() {
               v-model.number="draft.default_krw_per_twd"
               class="field tabular"
               type="number"
-              step="0.01"
+              step="any"
               placeholder="沿用預設"
             />
           </div>

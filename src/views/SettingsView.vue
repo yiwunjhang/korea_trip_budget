@@ -172,7 +172,7 @@ async function logout() {
           v-model.number="form.krw_per_twd"
           class="field tabular"
           type="number"
-          step="0.01"
+          step="any"
           min="0.01"
         />
       </div>
