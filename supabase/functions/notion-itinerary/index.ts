@@ -290,9 +290,16 @@ export async function buildItinerary(rawUrl: string): Promise<Itinerary> {
 
   const root = await loadPage(post, pageId)
   const rootBlock = unwrap(root.blocks[pageId])
-  const collectionId: string | undefined = rootBlock?.collection_id
-  const spaceId: string | undefined = rootBlock?.space_id
-  const view = viewId ?? rootBlock?.view_ids?.[0]
+  // 連結可以是資料庫本身，也可以是「一般頁面裡放了行內資料庫」：後者就用頁面裡第一個資料庫
+  const isDb = (b: Any) =>
+    b && b.alive !== false && b.collection_id && (b.type === 'collection_view' || b.type === 'collection_view_page')
+  const dbBlock: Any = isDb(rootBlock)
+    ? rootBlock
+    : ((rootBlock?.content ?? []) as string[]).map((id) => unwrap(root.blocks[id])).find(isDb) ??
+      Object.values(root.blocks).map(unwrap).find(isDb)
+  const collectionId: string | undefined = dbBlock?.collection_id
+  const spaceId: string | undefined = dbBlock?.space_id
+  const view = (dbBlock === rootBlock ? viewId : null) ?? dbBlock?.view_ids?.[0]
   if (!collectionId || !spaceId || !view) {
     throw new Error('這個連結不是 Notion 資料庫（請貼行程資料庫的公開連結）')
   }
