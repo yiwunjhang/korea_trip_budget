@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import CategoryIcon from '../components/CategoryIcon.vue'
 import { FIXED_CATEGORIES } from '../utils/categories'
 import TransactionList from '../components/TransactionList.vue'
@@ -7,6 +7,9 @@ import { useLedgerStore } from '../stores/ledger'
 import { formatKRW, formatTWD } from '../utils/money'
 
 const ledger = useLedgerStore()
+
+// 打開明細時同步一次最新的帳（30 秒內載入過就不重抓）
+onMounted(() => ledger.refreshIfStale())
 
 const walletFilter = ref<number | null>(null)
 const categoryFilter = ref<string | null>(null)

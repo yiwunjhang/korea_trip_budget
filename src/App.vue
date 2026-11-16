@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Leaf, Settings } from 'lucide-vue-next'
 import AppNav from './components/AppNav.vue'
@@ -27,6 +27,16 @@ async function load() {
 
 onMounted(load)
 watch(() => session.userId, load)
+
+/**
+ * 從別的 App 切回來、或回到這個分頁時，重新同步帳目
+ * （例如在 Supabase 直接匯入、或在另一支手機記了帳）。30 秒內不重複載入。
+ */
+function onVisible() {
+  if (document.visibilityState === 'visible' && session.signedIn()) ledger.refreshIfStale()
+}
+onMounted(() => document.addEventListener('visibilitychange', onVisible))
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible))
 </script>
 
 <template>

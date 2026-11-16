@@ -16,7 +16,11 @@ const payWallets = computed(() => ledger.activeWallets.filter((w) => !tracksBala
 
 /** 旅伴的花費會一直變，每次進總覽都重抓 */
 const group = useGroupStore()
-onMounted(() => group.refresh())
+// 旅伴的花費和自己的預算都同步一次（自己的帳 30 秒內載入過就不重抓）
+onMounted(() => {
+  group.refresh()
+  ledger.refreshIfStale()
+})
 </script>
 
 <template>

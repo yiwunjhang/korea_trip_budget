@@ -406,7 +406,8 @@ export async function listTransactions(options: { limit?: number } = {}): Promis
       .select('*')
       .order('spent_at', { ascending: false })
       .order('id', { ascending: false })
-      .limit(options.limit ?? 200),
+      // 一趟旅行兩個人記帳也很難超過，明細才不會把舊的帳截掉
+      .limit(options.limit ?? 2000),
   )
   return (rows ?? []).map(toTransaction)
 }

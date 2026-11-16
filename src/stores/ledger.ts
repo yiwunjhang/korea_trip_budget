@@ -55,7 +55,11 @@ export const useLedgerStore = defineStore('ledger', () => {
   }
 
   /** 重新載入整本帳 */
+  /** 上次從資料庫重新載入的時間（給 refreshIfStale 判斷） */
+  let lastRefreshedAt = 0
+
   async function refresh() {
+    lastRefreshedAt = Date.now()
     loading.value = true
     await run(async () => {
       const [s, sum, w, t] = await Promise.all([
@@ -70,6 +74,16 @@ export const useLedgerStore = defineStore('ledger', () => {
       transactions.value = t
     })
     loading.value = false
+  }
+
+  /**
+   * 距離上次載入超過 maxAgeMs 才重新載入。
+   * 用在「切回 app」「打開明細／總覽」：別的裝置或 Supabase 直接新增的帳也會同步進來，
+   * 又不會每次切頁都打一次資料庫。
+   */
+  async function refreshIfStale(maxAgeMs = 30_000) {
+    if (loading.value || Date.now() - lastRefreshedAt < maxAgeMs) return
+    await refresh()
   }
 
   /** 第一次進來若沒有設定（新帳號），先建預設值 */
@@ -129,6 +143,7 @@ export const useLedgerStore = defineStore('ledger', () => {
     walletById,
     rateFor,
     refresh,
+    refreshIfStale,
     ensureSeeded,
     addTransaction,
     editTransaction,
