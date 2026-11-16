@@ -62,6 +62,14 @@ export function rebateFor(amountTwd: number): number {
   return Math.round(amountTwd * REBATE_RATE)
 }
 
+/**
+ * 「悠遊付回饋」記成退款（品項含「回饋」）：它是拿到的回饋金，不是退貨，
+ * 不能從已刷金額扣掉，否則回饋額度會算錯。花費、預算仍會照常扣掉這筆。
+ */
+export function isRebateRefund(tx: Transaction): boolean {
+  return tx.kind === 'refund' && tx.title.includes('回饋')
+}
+
 export interface StageRebate {
   walletId: number
   walletName: string
@@ -108,7 +116,7 @@ export function buildRebateReport(
   const eligible = transactions
     .filter(
       (tx) =>
-        (tx.kind === 'expense' || tx.kind === 'refund') &&
+        (tx.kind === 'expense' || (tx.kind === 'refund' && !isRebateRefund(tx))) &&
         wallets.get(tx.wallet_id)?.kind === 'easywallet' &&
         stageOf(tx.spent_at) !== undefined,
     )
