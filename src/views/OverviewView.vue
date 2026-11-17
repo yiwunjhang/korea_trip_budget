@@ -5,6 +5,7 @@ import GroupSpendingChart from '../components/GroupSpendingChart.vue'
 import MySpendingSummary from '../components/MySpendingSummary.vue'
 import { useGroupStore } from '../stores/group'
 import RebateCard from '../components/RebateCard.vue'
+import RewardsCard from '../components/RewardsCard.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { formatMoney } from '../utils/money'
 import { tracksBalance } from '../utils/wallet'
@@ -53,6 +54,9 @@ onMounted(() => {
 
     <!-- 旅伴：每天各自花在哪 -->
     <GroupSpendingChart />
+
+    <!-- 實際拿回來的回饋與退稅 -->
+    <RewardsCard />
 
     <!-- 悠遊付回饋 -->
     <RebateCard />
